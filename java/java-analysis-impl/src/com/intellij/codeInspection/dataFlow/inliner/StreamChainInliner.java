@@ -15,6 +15,7 @@
  */
 package com.intellij.codeInspection.dataFlow.inliner;
 
+import com.intellij.codeInsight.Nullability;
 import com.intellij.codeInspection.dataFlow.*;
 import com.intellij.codeInspection.dataFlow.value.DfaConstValue;
 import com.intellij.codeInspection.dataFlow.value.DfaUnknownValue;
@@ -162,8 +163,10 @@ public class StreamChainInliner implements CallInliner {
         myNext.pushResult(builder);
       }
       else {
-        builder.push(builder.getFactory()
-                       .createTypeValue(myCall.getType(), DfaPsiUtil.getElementNullability(myCall.getType(), myCall.resolveMethod())));
+        DfaValue resultValue =
+          builder.getFactory().createTypeValue(myCall.getType(),
+                                               DfaPsiUtil.getElementNullability(myCall.getType(), myCall.resolveMethod()));
+        builder.push(resultValue, myCall);
       }
     }
 
@@ -213,7 +216,7 @@ public class StreamChainInliner implements CallInliner {
 
     @Override
     void pushResult(CFGBuilder builder) {
-      builder.push(myResult);
+      builder.push(myResult, myCall);
     }
   }
 
@@ -265,7 +268,9 @@ public class StreamChainInliner implements CallInliner {
         builder.push(myResult)
                .push(presentOptional)
                .ifCondition(JavaTokenType.INSTANCEOF_KEYWORD)
-                .push(builder.getFactory().getFactValue(DfaFactType.CAN_BE_NULL, false)).swap().invokeFunction(2, myFunction, Nullness.NOT_NULL)
+                 .push(builder.getFactory().getFactValue(DfaFactType.CAN_BE_NULL, false))
+                 .swap()
+                 .invokeFunction(2, myFunction, Nullability.NOT_NULL)
                .end();
       }
       builder.assign(myResult, presentOptional).splice(2);
@@ -349,7 +354,7 @@ public class StreamChainInliner implements CallInliner {
     @Override
     void iteration(CFGBuilder builder) {
       builder
-        .invokeFunction(1, myFunction, myNext.expectNotNull() ? Nullness.NOT_NULL : Nullness.UNKNOWN)
+        .invokeFunction(1, myFunction, myNext.expectNotNull() ? Nullability.NOT_NULL : Nullability.UNKNOWN)
         .assignTo(builder.createTempVariable(StreamApiUtil.getStreamElementType(myCall.getType())))
         .chain(myNext::iteration);
     }
@@ -422,7 +427,7 @@ public class StreamChainInliner implements CallInliner {
                .pushUnknown()
                .ifConditionIs(true)
                  .doWhileUnknown()
-                   .push(builder.getFactory().createTypeValue(outType, Nullness.UNKNOWN))
+                   .push(builder.getFactory().createTypeValue(outType, Nullability.UNKNOWN))
                    .chain(myNext::iteration)
                  .end()
                .end();
@@ -529,10 +534,10 @@ public class StreamChainInliner implements CallInliner {
     @Override
     protected void pushInitialValue(CFGBuilder builder) {
       if (myFunction != null) {
-        builder.invokeFunction(0, myFunction, Nullness.NOT_NULL);
+        builder.invokeFunction(0, myFunction, Nullability.NOT_NULL);
       }
       else {
-        DfaValue value = builder.getFactory().createTypeValue(myCall.getType(), Nullness.NOT_NULL);
+        DfaValue value = builder.getFactory().createTypeValue(myCall.getType(), Nullability.NOT_NULL);
         if (myImmutable) {
           value = builder.getFactory().withFact(value, DfaFactType.MUTABILITY, Mutability.UNMODIFIABLE);
         }
@@ -591,9 +596,9 @@ public class StreamChainInliner implements CallInliner {
       // Null values are not tolerated
       // Null keys are not tolerated for immutable maps
       builder.dup()
-             .invokeFunction(1, myKeyExtractor, myImmutable ? Nullness.NOT_NULL : Nullness.NULLABLE)
+             .invokeFunction(1, myKeyExtractor, myImmutable ? Nullability.NOT_NULL : Nullability.NULLABLE)
              .pop()
-             .invokeFunction(1, myValueExtractor, Nullness.NOT_NULL);
+             .invokeFunction(1, myValueExtractor, Nullability.NOT_NULL);
       if (myMerger != null) {
         builder.pushUnknown()
                .ifConditionIs(true)
@@ -627,7 +632,7 @@ public class StreamChainInliner implements CallInliner {
            .ifConditionIs(true)
            .chain(b -> buildStreamCFG(b, firstStep, originalQualifier))
            .end()
-           .push(builder.getFactory().createTypeValue(call.getType(), Nullness.NOT_NULL));
+           .push(builder.getFactory().createTypeValue(call.getType(), Nullability.NOT_NULL), call);
     return true;
   }
 

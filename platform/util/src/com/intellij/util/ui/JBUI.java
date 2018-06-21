@@ -3,6 +3,7 @@ package com.intellij.util.ui;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.util.CopyableIcon;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.ScalableIcon;
 import com.intellij.openapi.util.SystemInfo;
@@ -554,14 +555,6 @@ public class JBUI {
     return insets(0, 0, 0, r);
   }
 
-  /**
-   * @deprecated use JBUI.scale(EmptyIcon.create(size)) instead
-   */
-  @NotNull
-  public static EmptyIcon emptyIcon(int size) {
-    return scale(EmptyIcon.create(size));
-  }
-
   @NotNull
   @SuppressWarnings("unchecked")
   public static <T extends JBIcon> T scale(@NotNull T icon) {
@@ -837,6 +830,16 @@ public class JBUI {
       return new BaseScaleContext();
     }
 
+    /**
+     * Creates a context from the provided {@code ctx}.
+     */
+    @NotNull
+    public static BaseScaleContext create(@Nullable BaseScaleContext ctx) {
+      BaseScaleContext c = createIdentity();
+      c.update(ctx);
+      return c;
+    }
+
     protected double derivePixScale() {
       return usrScale.value * objScale.value;
     }
@@ -1025,6 +1028,16 @@ public class JBUI {
     @NotNull
     public static ScaleContext createIdentity() {
       return create(USR_SCALE.of(1), SYS_SCALE.of(1));
+    }
+
+    /**
+     * Creates a context from the provided {@code ctx}.
+     */
+    @NotNull
+    public static ScaleContext create(@Nullable BaseScaleContext ctx) {
+      ScaleContext c = createIdentity();
+      c.update(ctx);
+      return c;
     }
 
     /**
@@ -1407,8 +1420,8 @@ public class JBUI {
    * @author tav
    * @author Aleksey Pivovarov
    */
-  public abstract static class CachingScalableJBIcon<T extends CachingScalableJBIcon> extends ScalableJBIcon {
-    private CachingScalableJBIcon myScaledIconCache;
+  public abstract static class CachingScalableJBIcon<T extends CachingScalableJBIcon> extends ScalableJBIcon implements CopyableIcon {
+    private T myScaledIconCache;
 
     protected CachingScalableJBIcon() {}
 
@@ -1421,8 +1434,11 @@ public class JBUI {
      */
     @Override
     @NotNull
-    public Icon scale(float scale) {
-      if (scale == getScale()) return this;
+    public T scale(float scale) {
+      if (scale == getScale()) {
+        //noinspection unchecked
+        return (T)this;
+      }
 
       if (myScaledIconCache == null || myScaledIconCache.getScale() != scale) {
         myScaledIconCache = copy();
@@ -1431,11 +1447,9 @@ public class JBUI {
       return myScaledIconCache;
     }
 
-    /**
-     * @return a copy of this icon instance
-     */
     @NotNull
-    protected abstract T copy();
+    @Override
+    public abstract T copy();
   }
 
   /**
@@ -1443,7 +1457,7 @@ public class JBUI {
    *
    * @author tav
    */
-  public abstract static class RasterJBIcon extends ScaleContextSupport<ScaleContext> implements Icon {
+  public abstract static class RasterJBIcon extends ScaleContextSupport<ScaleContext> implements CopyableIcon {
     public RasterJBIcon() {
       super(ScaleContext.create());
     }
@@ -1616,14 +1630,16 @@ public class JBUI {
         return active ? JBColor.namedColor("Focus.activeWarningBorderColor", 0xe2a53a) :
                         JBColor.namedColor("Focus.inactiveWarningBorderColor",0xffd385);
       }
+    }
 
-      public static class TabbedPane {
-        public static final Color ENABLED_SELECTED_COLOR = JBColor.namedColor("TabbedPane.selectedСolor", 0x357ecc);
-        public static final Color DISABLED_SELECTED_COLOR = JBColor.namedColor("TabbedPane.selectedDisabledColor", Gray.xAB);
-        public static final Color HOVER_COLOR = JBColor.namedColor("TabbedPane.hoverColor", Gray.xD9);
-        public static final JBValue TAB_HEIGHT = new JBValue.UIInteger("TabbedPane.tabHeight", 32);
-        public static final JBValue SELECTION_HEIGHT = new JBValue.UIInteger("TabbedPane.tabSelectionHeight", 2);
-      }
+    public static class TabbedPane {
+      public static final Color ENABLED_SELECTED_COLOR = JBColor.namedColor("TabbedPane.selectedColor", 0x4083C9);
+      public static final Color DISABLED_SELECTED_COLOR = JBColor.namedColor("TabbedPane.selectedDisabledColor", Gray.xAB);
+      public static final Color DISABLED_TEXT_COLOR = JBColor.namedColor("TabbedPane.disabledText", Gray.x99);
+      public static final Color HOVER_COLOR = JBColor.namedColor("TabbedPane.hoverColor", Gray.xD9);
+      public static final Color FOCUS_COLOR = JBColor.namedColor("TabbedPane.focusColor", 0xDAE4ED);
+      public static final JBValue TAB_HEIGHT = new JBValue.UIInteger("TabbedPane.tabHeight", 32);
+      public static final JBValue SELECTION_HEIGHT = new JBValue.UIInteger("TabbedPane.tabSelectionHeight", 3);
     }
 
     //todo #UX-1 maybe move to popup
@@ -1649,11 +1665,15 @@ public class JBUI {
       }
 
       public static Insets searchFieldInsets() {
-        return insets(0, 12, 0, 10);
+        return insets(0, 6, 0, 5);
       }
 
-      public static int maxListHeght() {
+      public static int maxListHeight() {
         return JBUI.scale(600);
+      }
+
+      public static Color listSeparatorColor() {
+        return JBColor.namedColor("SearchEverywhere.List.Separator.Color", 0xdcdcdc);
       }
     }
   }

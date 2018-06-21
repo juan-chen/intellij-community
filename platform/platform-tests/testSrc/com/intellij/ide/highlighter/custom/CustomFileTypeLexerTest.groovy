@@ -272,6 +272,34 @@ MULTI_LINE_COMMENT ('/* a\\n *bc */')
     doTest createJavaSyntaxTable(), "//", 'LINE_COMMENT (\'//\')\n'
   }
 
+  void "test block comment start overrides line comment start"() {
+    def table = new SyntaxTable()
+    table.lineComment = '#'
+    table.startComment = '#{'
+    table.endComment = '}#'
+    doTest table, "#{ \nblock\n }#\n# line\nid", '''\
+MULTI_LINE_COMMENT ('#{ \\nblock\\n }#')
+WHITESPACE ('\\n')
+LINE_COMMENT ('# line')
+WHITESPACE ('\\n')
+IDENTIFIER ('id')
+'''
+  }
+
+  void "test line comment start overrides block comment start"() {
+    def table = new SyntaxTable()
+    table.lineComment = '##'
+    table.startComment = '#'
+    table.endComment = '/#'
+    doTest table, "#\nblock\n/#\n## line\nid", '''\
+MULTI_LINE_COMMENT ('#\\nblock\\n/#')
+WHITESPACE ('\\n')
+LINE_COMMENT ('## line')
+WHITESPACE ('\\n')
+IDENTIFIER ('id')
+'''
+  }
+
   void testEmpty() {
     doTest createJavaSyntaxTable(), "", ''
   }

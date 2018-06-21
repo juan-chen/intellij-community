@@ -160,9 +160,6 @@ public interface TokenSets {
 
   TokenSet POSTFIX_UNARY_OP_SET = TokenSet.create(mDEC, mINC);
 
-  @Deprecated
-  TokenSet BINARY_OP_SET = GroovyTokenSets.BINARY_OPERATORS;
-
   TokenSet PARENTHESIZED_BINARY_OP_SET = TokenSet.create(mEQUAL, mNOT_EQUAL);
 
   TokenSet ASSOCIATIVE_BINARY_OP_SET = TokenSet.create(mBAND, mBOR, mBXOR, mLOR, mPLUS, mSTAR, mLAND);
@@ -183,7 +180,7 @@ public interface TokenSets {
                                                 SHIFT_EXPRESSION,
                                                 RANGE_EXPRESSION);
 
-  TokenSet DOTS = TokenSet.create(mSPREAD_DOT, mOPTIONAL_DOT, mMEMBER_POINTER, mDOT);
+  TokenSet DOTS = GroovyTokenSets.DOTS;
 
   TokenSet WHITE_SPACES_OR_COMMENTS = TokenSet.orSet(WHITE_SPACES_SET, COMMENT_SET);
 

@@ -10,14 +10,12 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.progress.util.BackgroundTaskUtil
-import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.vcs.VcsNotifier
 import com.intellij.openapi.vcs.VcsNotifier.STANDARD_NOTIFICATION
 import com.intellij.util.containers.MultiMap
 import com.intellij.vcs.log.Hash
 import com.intellij.vcs.log.VcsCommitMetadata
-import git4idea.branch.GitBranchUtil
 import git4idea.branch.GitRebaseParams
 import git4idea.checkin.GitCheckinEnvironment
 import git4idea.commands.Git
@@ -25,6 +23,7 @@ import git4idea.commands.GitCommand
 import git4idea.commands.GitLineHandler
 import git4idea.config.GitConfigUtil
 import git4idea.config.GitVersionSpecialty
+import git4idea.findProtectedRemoteBranchContainingCommit
 import git4idea.history.GitLogUtil
 import git4idea.rebase.GitRebaseEntry.Action.PICK
 import git4idea.rebase.GitRebaseEntry.Action.REWORD
@@ -109,7 +108,7 @@ class GitRewordOperation(private val repository: GitRepository,
   }
 
   internal fun undo() {
-    val possibility = checkUndoPossibility(project)
+    val possibility = checkUndoPossibility()
     val errorTitle = "Can't Undo Reword"
     when (possibility) {
       is UndoPossibility.HeadMoved -> notifier.notifyError(errorTitle, "Repository has already been changed")
@@ -154,15 +153,19 @@ class GitRewordOperation(private val repository: GitRepository,
       LOG.error("Couldn't find commits after reword in range $newCommitsRange")
       return null
     }
-    val newCommit = newCommits.last()
-    if (!StringUtil.equalsIgnoreWhitespaces(newCommit.fullMessage, newMessage)) {
-      LOG.error("Couldn't find the reworded commit. Expected message: \n[$newMessage]\nActual message: \n[${newCommit.fullMessage}]")
+    val newCommit = newCommits.find {
+      commit.author == it.author &&
+      commit.authorTime == it.authorTime &&
+      StringUtil.equalsIgnoreWhitespaces(it.fullMessage, newMessage)
+    }
+    if (newCommit == null) {
+      LOG.error("Couldn't find the reworded commit in range $newCommitsRange")
       return null
     }
     return newCommit.id
   }
 
-  private fun checkUndoPossibility(project: Project): UndoPossibility {
+  private fun checkUndoPossibility(): UndoPossibility {
     repository.update()
     if (repository.currentRevision != headAfterReword) {
       return UndoPossibility.HeadMoved
@@ -172,8 +175,7 @@ class GitRewordOperation(private val repository: GitRepository,
       LOG.error("Couldn't find the reworded commit")
       return UndoPossibility.Error
     }
-    val containingBranches = GitBranchUtil.getBranches(project, repository.root, false, true, rewordedCommit!!.asString())
-    val protectedBranch = findProtectedRemoteBranch(repository, containingBranches)
+    val protectedBranch = findProtectedRemoteBranchContainingCommit(repository, rewordedCommit!!)
     if (protectedBranch != null) return UndoPossibility.PushedToProtectedBranch(protectedBranch)
     return UndoPossibility.Possible
   }
@@ -189,7 +191,7 @@ class GitRewordOperation(private val repository: GitRepository,
     notification.whenExpired { connection.disconnect() }
     connection.subscribe(GitRepository.GIT_REPO_CHANGE, GitRepositoryChangeListener {
       BackgroundTaskUtil.executeOnPooledThread(repository, Runnable {
-        if (checkUndoPossibility(project) !is UndoPossibility.Possible) notification.expire()
+        if (checkUndoPossibility() !is UndoPossibility.Possible) notification.expire()
       })
     })
 
@@ -219,7 +221,5 @@ class GitRewordOperation(private val repository: GitRepository,
       notifySuccess()
       succeeded = true
     }
-
-    override fun shouldRefreshOnSuccess(successType: GitSuccessfulRebase.SuccessType) = false
   }
 }

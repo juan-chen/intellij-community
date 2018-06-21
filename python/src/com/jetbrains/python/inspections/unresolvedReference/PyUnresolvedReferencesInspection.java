@@ -707,9 +707,12 @@ public class PyUnresolvedReferencesInspection extends PyInspection {
             }
             else if (type instanceof PyFunctionType) {
               final PyCallable callable = ((PyFunctionType)type).getCallable();
-              final QualifiedName path = QualifiedNameFinder.findCanonicalImportPath(callable, element);
-              if (path != null) {
-                result.add(path.append(QualifiedName.fromComponents(callable.getName(), exprName)));
+              final String callableName = callable.getName();
+              if (callableName != null) {
+                final QualifiedName path = QualifiedNameFinder.findCanonicalImportPath(callable, element);
+                if (path != null) {
+                  result.add(path.append(QualifiedName.fromComponents(callableName, exprName)));
+                }
               }
             }
             else if (type instanceof PyUnionType) {
@@ -877,12 +880,7 @@ public class PyUnresolvedReferencesInspection extends PyInspection {
         final PyExpression receiver = ((PyOperatorReference)reference).getReceiver();
 
         if (receiver instanceof PyCallExpression) {
-          final boolean resolvedToGeneratorBasedCoroutine = StreamEx
-            .of(((PyCallExpression)receiver).multiResolveCalleeFunction(getResolveContext()))
-            .select(PyFunction.class)
-            .anyMatch(function -> PyKnownDecoratorUtil.hasGeneratorBasedCoroutineDecorator(function, myTypeEvalContext));
-
-          if (resolvedToGeneratorBasedCoroutine) return true;
+          return PyKnownDecoratorUtil.isResolvedToGeneratorBasedCoroutine((PyCallExpression)receiver, getResolveContext(), myTypeEvalContext);
         }
       }
 
@@ -1045,7 +1043,7 @@ public class PyUnresolvedReferencesInspection extends PyInspection {
       final PyInspectionExtension[] extensions = Extensions.getExtensions(PyInspectionExtension.EP_NAME);
       final List<PsiElement> unused = collectUnusedImportElements();
       for (PsiElement element : unused) {
-        if (Arrays.stream(extensions).anyMatch(extension -> extension.ignoreUnused(element))) {
+        if (Arrays.stream(extensions).anyMatch(extension -> extension.ignoreUnused(element, myTypeEvalContext))) {
           continue;
         }
         if (element.getTextLength() > 0) {

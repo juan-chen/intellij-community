@@ -13,7 +13,7 @@ import com.intellij.openapi.vfs.CharsetToolkit;
 import com.intellij.ui.*;
 import com.intellij.ui.mac.foundation.Foundation;
 import com.intellij.ui.paint.LinePainter2D;
-import com.intellij.ui.paint.PaintUtil;
+import com.intellij.ui.paint.PaintUtil.RoundingMode;
 import com.intellij.util.*;
 import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.JBIterable;
@@ -41,6 +41,7 @@ import javax.swing.event.UndoableEditListener;
 import javax.swing.plaf.ButtonUI;
 import javax.swing.plaf.ComboBoxUI;
 import javax.swing.plaf.FontUIResource;
+import javax.swing.plaf.UIResource;
 import javax.swing.plaf.basic.BasicComboBoxUI;
 import javax.swing.plaf.basic.BasicRadioButtonUI;
 import javax.swing.plaf.basic.BasicTextUI;
@@ -201,53 +202,12 @@ public class UIUtil {
     drawLine(g, startX, bottomY, endX, bottomY, null, color);
   }
 
-  private static final RGBImageFilter DEFAULT_GRAY_FILTER = new GrayFilter(
-    Registry.get("ide.grayfilter.default.brightness").asInteger(),
-    Registry.get("ide.grayfilter.default.contrast").asInteger(),
-    Registry.get("ide.grayfilter.default.alpha").asInteger()
-  );
-  private static final RGBImageFilter DARCULA_GRAY_FILTER = new GrayFilter(
-    Registry.get("ide.grayfilter.darcula.brightness").asInteger(),
-    Registry.get("ide.grayfilter.darcula.contrast").asInteger(),
-    Registry.get("ide.grayfilter.darcula.alpha").asInteger()
-  );
-
   public static RGBImageFilter getGrayFilter() {
-    return isUnderDarcula() ? DARCULA_GRAY_FILTER : DEFAULT_GRAY_FILTER;
+    return GrayFilter.namedFilter("grayFilter", new GrayFilter(33, -35, 100));
   }
 
-  @ApiStatus.Experimental
-  public static void setGrayFilterProperty(String prop, int value) {
-    GrayFilter filter = (GrayFilter)getGrayFilter();
-    if ("brightness".equals(prop)) {
-      filter.setBrightness(value);
-    }
-    else if ("contrast".equals(prop)) {
-      filter.setContrast(value);
-    }
-    else if ("alpha".equals(prop)) {
-      filter.setAlpha(value);
-    }
-    else {
-      return;
-    }
-    String key = "ide.grayfilter." + (isUnderDarcula() ? "darcula." : "default.") + prop;
-    Registry.get(key).setValue(value);
-  }
-
-  @ApiStatus.Experimental
-  public static int getGrayFilterProperty(String prop) {
-    GrayFilter filter = (GrayFilter)getGrayFilter();
-    if ("brightness".equals(prop)) {
-      return filter.getBrightness();
-    }
-    else if ("contrast".equals(prop)) {
-      return filter.getContrast();
-    }
-    else if ("alpha".equals(prop)) {
-      return filter.getAlpha();
-    }
-    throw new IllegalArgumentException("wrong property: " + prop);
+  public static RGBImageFilter getTextGrayFilter() {
+    return GrayFilter.namedFilter("text.grayFilter", new GrayFilter(20, 0, 100));
   }
 
   @ApiStatus.Experimental
@@ -329,9 +289,25 @@ public class UIUtil {
 
       return (a << 24) | (gray << 16) | (gray << 8) | gray;
     }
+
+    public GrayFilterUIResource asUIResource() {
+      return new GrayFilterUIResource(this);
+    }
+
+    public static class GrayFilterUIResource extends GrayFilter implements UIResource {
+      public GrayFilterUIResource(GrayFilter filter) {
+        super(filter.origBrightness, filter.origContrast, filter.alpha);
+      }
+    }
+
+    @NotNull
+    public static GrayFilter namedFilter(String resourceName, GrayFilter defaultFilter) {
+      return ObjectUtils.notNull((GrayFilter)UIManager.get(resourceName), defaultFilter);
+    }
   }
 
   /** @deprecated Apple JRE is no longer supported (to be removed in IDEA 2019) */
+  @Deprecated
   public static boolean isAppleRetina() {
     return false;
   }
@@ -1200,6 +1176,7 @@ public class UIUtil {
   /**
    * @deprecated use com.intellij.util.ui.UIUtil#getTextFieldBackground()
    */
+  @Deprecated
   public static Color getActiveTextFieldBackgroundColor() {
     return getTextFieldBackground();
   }
@@ -1234,6 +1211,7 @@ public class UIUtil {
   /**
    * @deprecated use com.intellij.util.ui.UIUtil#getInactiveTextColor()
    */
+  @Deprecated
   public static Color getTextInactiveTextColor() {
     return getInactiveTextColor();
   }
@@ -1260,6 +1238,10 @@ public class UIUtil {
 
   public static Color getToolTipBackground() {
     return UIManager.getColor("ToolTip.background");
+  }
+  
+  public static Color getToolTipActionBackground() {
+    return JBColor.namedColor("ToolTip.actions.background", new JBColor(0xf1f1ca, 0x43474a)); 
   }
 
   public static Color getToolTipForeground() {
@@ -1464,6 +1446,7 @@ public class UIUtil {
   /**
    * @deprecated use com.intellij.util.ui.UIUtil#getPanelBackground() instead
    */
+  @Deprecated
   public static Color getPanelBackgound() {
     return getPanelBackground();
   }
@@ -1581,6 +1564,7 @@ public class UIUtil {
    * @return false
    * @deprecated
    */
+  @Deprecated
   @SuppressWarnings("HardCodedStringLiteral")
   public static boolean isUnderAlloyLookAndFeel() {
     return false;
@@ -1591,6 +1575,7 @@ public class UIUtil {
    * @return false
    * @deprecated
    */
+  @Deprecated
   @SuppressWarnings("HardCodedStringLiteral")
   public static boolean isUnderAlloyIDEALookAndFeel() {
     return false;
@@ -1617,6 +1602,7 @@ public class UIUtil {
    * @return false
    * @deprecated
    */
+  @Deprecated
   @SuppressWarnings("HardCodedStringLiteral")
   public static boolean isUnderNimbusLookAndFeel() {
     return false;
@@ -1627,6 +1613,7 @@ public class UIUtil {
    * @return false
    * @deprecated
    */
+  @Deprecated
   @SuppressWarnings("HardCodedStringLiteral")
   public static boolean isUnderJGoodiesLookAndFeel() {
     return false;
@@ -2129,9 +2116,21 @@ public class UIUtil {
    * @return a HiDPI-aware BufferedImage in the graphics scale
    */
   @NotNull
-  public static BufferedImage createImage(GraphicsConfiguration gc, double width, double height, int type, PaintUtil.RoundingMode rm) {
+  public static BufferedImage createImage(GraphicsConfiguration gc, double width, double height, int type, RoundingMode rm) {
     if (isJreHiDPI(gc)) {
       return RetinaImage.create(gc, width, height, type, rm);
+    }
+    //noinspection UndesirableClassUsage
+    return new BufferedImage(rm.round(width), rm.round(height), type);
+  }
+
+  /**
+   * @see #createImage(GraphicsConfiguration, double, double, int, RoundingMode)
+   */
+  @NotNull
+  public static BufferedImage createImage(ScaleContext ctx, double width, double height, int type, RoundingMode rm) {
+    if (isJreHiDPI(ctx)) {
+      return RetinaImage.create(ctx, width, height, type, rm);
     }
     //noinspection UndesirableClassUsage
     return new BufferedImage(rm.round(width), rm.round(height), type);
@@ -2179,6 +2178,7 @@ public class UIUtil {
   /**
    * @deprecated use {@link #createImage(Graphics, int, int, int)}
    */
+  @Deprecated
   @NotNull
   public static BufferedImage createImageForGraphics(Graphics2D g, int width, int height, int type) {
     return createImage(g, width, height, type);
@@ -2596,11 +2596,6 @@ public class UIUtil {
     return null;
   }
 
-  @Deprecated
-  public static <T extends Component> T findParentByClass(@NotNull Component c, Class<T> cls) {
-    return getParentOfType(cls, c);
-  }
-
   //x and y should be from {0, 0} to {parent.getWidth(), parent.getHeight()}
   @Nullable
   public static Component getDeepestComponentAt(@NotNull Component parent, int x, int y) {
@@ -2760,6 +2755,7 @@ public class UIUtil {
   /**
    * @deprecated use {@link JBColor#border()}
    */
+  @Deprecated
   public static Color getBorderColor() {
     return isUnderDarcula() ? Gray._50 : BORDER_COLOR;
   }
@@ -2772,6 +2768,7 @@ public class UIUtil {
   /**
    * @deprecated use getBorderColor instead
    */
+  @Deprecated
   public static Color getBorderInactiveColor() {
     return getBorderColor();
   }
@@ -2779,6 +2776,7 @@ public class UIUtil {
   /**
    * @deprecated use getBorderColor instead
    */
+  @Deprecated
   public static Color getBorderActiveColor() {
     return getBorderColor();
   }
@@ -2786,6 +2784,7 @@ public class UIUtil {
   /**
    * @deprecated use getBorderColor instead
    */
+  @Deprecated
   public static Color getBorderSeparatorColor() {
     return getBorderColor();
   }
@@ -2871,6 +2870,25 @@ public class UIUtil {
     @Override
     public StyleSheet getStyleSheet() {
       return style;
+    }
+
+    @Override
+    public Document createDefaultDocument() {
+      StyleSheet styles = getStyleSheet();
+      StyleSheet ss = new StyleSheet() {
+        @Override
+        protected int getCompressionThreshold() {
+          return -1;
+        }
+      };
+
+      ss.addStyleSheet(styles);
+
+      HTMLDocument doc = new HTMLDocument(ss);
+      doc.setParser(getParser());
+      doc.setAsynchronousLoadPriority(4);
+      doc.setTokenThreshold(100);
+      return doc;
     }
 
     public static StyleSheet createStyleSheet() {

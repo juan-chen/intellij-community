@@ -1,9 +1,10 @@
-// Copyright 2000-2017 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.psi.impl.source.tree.injected;
 
 import com.intellij.injected.editor.DocumentWindow;
 import com.intellij.injected.editor.EditorWindow;
+import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
@@ -17,6 +18,7 @@ import com.intellij.openapi.editor.ex.LineIterator;
 import com.intellij.openapi.editor.ex.RangeMarkerEx;
 import com.intellij.openapi.util.*;
 import com.intellij.openapi.util.text.StringUtil;
+import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiLanguageInjectionHost;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.Processor;
@@ -625,34 +627,6 @@ class DocumentWindowImpl extends UserDataHolderBase implements Disposable, Docum
   }
 
   @Override
-  public int hostToInjectedUnescaped(int hostOffset) {
-    synchronized (myLock) {
-      Segment hostRangeMarker = myShreds.get(0).getHostRangeMarker();
-      if (hostRangeMarker == null || hostOffset < hostRangeMarker.getStartOffset()) return myShreds.get(0).getPrefix().length();
-      int offset = 0;
-      for (int i = 0; i < myShreds.size(); i++) {
-        offset += myShreds.get(i).getPrefix().length();
-        Segment currentRange = myShreds.get(i).getHostRangeMarker();
-        if (currentRange == null) continue;
-        Segment nextRange = i == myShreds.size() - 1 ? null : myShreds.get(i + 1).getHostRangeMarker();
-        if (nextRange == null || hostOffset < nextRange.getStartOffset()) {
-          if (hostOffset >= currentRange.getEndOffset()) {
-            offset += myShreds.get(i).getRange().getLength();
-          }
-          else {
-            //todo use escaper to convert host-range delta into injected space
-            offset += hostOffset - currentRange.getStartOffset();
-          }
-          return offset;
-        }
-        offset += myShreds.get(i).getRange().getLength();
-        offset += myShreds.get(i).getSuffix().length();
-      }
-      return getTextLength() - myShreds.get(myShreds.size() - 1).getSuffix().length();
-    }
-  }
-
-  @Override
   public int injectedToHost(int offset) {
     int offsetInLeftFragment = injectedToHost(offset, true);
     int offsetInRightFragment = injectedToHost(offset, false);
@@ -742,7 +716,9 @@ class DocumentWindowImpl extends UserDataHolderBase implements Disposable, Docum
     }
   }
 
-  @Override
+  /**
+   * @deprecated Use {@link InjectedLanguageManager#intersectWithAllEditableFragments(PsiFile, TextRange)} instead
+   */
   @Deprecated
   @Nullable
   public TextRange intersectWithEditable(@NotNull TextRange rangeToEdit) {

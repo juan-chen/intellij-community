@@ -91,6 +91,7 @@ import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.progress.util.AbstractProgressIndicatorExBase;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.UserDataHolderBase;
@@ -132,6 +133,9 @@ import static com.intellij.util.containers.ContainerUtil.*;
  * @since 4/22/13 9:36 AM
  */
 public class ExternalSystemUtil {
+
+  @NotNull public static final Key<ExternalSystemTaskId> EXTERNAL_SYSTEM_TASK_ID_KEY =
+    Key.create("com.intellij.openapi.externalSystem.util.taskId");
 
   private static final Logger LOG = Logger.getInstance(ExternalSystemUtil.class);
 
@@ -704,25 +708,12 @@ public class ExternalSystemUtil {
   }
 
   @NotNull
-  public static com.intellij.build.events.FailureResult createFailureResult(@NotNull String title,
+  public static FailureResultImpl createFailureResult(@NotNull String title,
                                                                             @NotNull Exception exception,
                                                                             @NotNull ProjectSystemId externalSystemId,
                                                                             @NotNull Project project) {
     ExternalSystemNotificationManager notificationManager = ExternalSystemNotificationManager.getInstance(project);
     NotificationData notificationData = notificationManager.createNotification(title, exception, externalSystemId, project);
-    return createFailureResult(exception, externalSystemId, project, notificationManager, notificationData);
-  }
-
-  /**
-   * @deprecated to be removed in 2018.2
-   */
-  @NotNull
-  public static FailureResultImpl createFailureResult(@NotNull Exception exception,
-                                                      @NotNull String projectName,
-                                                      @NotNull ProjectSystemId externalSystemId,
-                                                      @NotNull Project project) {
-    ExternalSystemNotificationManager notificationManager = ExternalSystemNotificationManager.getInstance(project);
-    NotificationData notificationData = notificationManager.createNotification(exception, projectName, externalSystemId, project);
     return createFailureResult(exception, externalSystemId, project, notificationManager, notificationData);
   }
 
@@ -993,18 +984,6 @@ public class ExternalSystemUtil {
     if (settings == null) return null;
 
     return new ExecutionEnvironment(executor, runner, settings, project);
-  }
-
-  /**
-   * @deprecated to be removed in IDEA 2017, use {@link #createExecutionEnvironment}
-   */
-  @Nullable
-  public static Pair<ProgramRunner, ExecutionEnvironment> createRunner(@NotNull ExternalSystemTaskExecutionSettings taskSettings,
-                                                                       @NotNull String executorId,
-                                                                       @NotNull Project project,
-                                                                       @NotNull ProjectSystemId externalSystemId) {
-    ExecutionEnvironment executionEnvironment = createExecutionEnvironment(project, externalSystemId, taskSettings, executorId);
-    return executionEnvironment == null ? null : Pair.create(executionEnvironment.getRunner(), executionEnvironment);
   }
 
   @Nullable

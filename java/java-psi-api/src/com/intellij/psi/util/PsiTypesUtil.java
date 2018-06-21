@@ -20,6 +20,8 @@ import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Condition;
 import com.intellij.pom.java.LanguageLevel;
 import com.intellij.psi.*;
+import com.intellij.psi.codeStyle.CodeStyleManager;
+import com.intellij.psi.codeStyle.JavaCodeStyleManager;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.util.IncorrectOperationException;
 import gnu.trove.THashMap;
@@ -257,7 +259,8 @@ public class PsiTypesUtil {
     }
     else if (parent instanceof PsiAssignmentExpression) {
       if (PsiUtil.checkSameExpression(element, ((PsiAssignmentExpression)parent).getRExpression())) {
-        return ((PsiAssignmentExpression)parent).getLExpression().getType();
+        PsiType type = ((PsiAssignmentExpression)parent).getLExpression().getType();
+        return !PsiType.NULL.equals(type) ? type : null;
       }
     }
     else if (parent instanceof PsiReturnStatement) {
@@ -321,9 +324,17 @@ public class PsiTypesUtil {
   }
 
   /**
-   * @param context in which type should be checked
-   * @return false if type is null or has no explicit canonical type representation (e. g. intersection type)
+   *  Not compliant to specification, use {@link PsiTypesUtil#isDenotableType(PsiType, PsiElement)} instead
    */
+  @Deprecated
+  public static boolean isDenotableType(@Nullable PsiType type) {
+    return !(type instanceof PsiWildcardType || type instanceof PsiCapturedWildcardType);
+  }
+
+    /**
+     * @param context in which type should be checked
+     * @return false if type is null or has no explicit canonical type representation (e. g. intersection type)
+     */
   public static boolean isDenotableType(@Nullable PsiType type, @NotNull PsiElement context) {
     if (type == null) return false;
     PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(context.getProject());
@@ -430,6 +441,22 @@ public class PsiTypesUtil {
       newType = newType.createArrayType();
     }
     return newType;
+  }
+
+  /**
+   * @return null if type can't be explicitly specified
+   */
+  @Nullable
+  public static PsiTypeElement replaceWithExplicitType(PsiTypeElement typeElement) {
+    PsiType type = typeElement.getType();
+    if (!isDenotableType(type, typeElement)) {
+      return null;
+    }
+    Project project = typeElement.getProject();
+    PsiTypeElement typeElementByExplicitType = JavaPsiFacade.getElementFactory(project).createTypeElement(type);
+    PsiElement explicitTypeElement = typeElement.replace(typeElementByExplicitType);
+    explicitTypeElement = JavaCodeStyleManager.getInstance(project).shortenClassReferences(explicitTypeElement);
+    return (PsiTypeElement)CodeStyleManager.getInstance(project).reformat(explicitTypeElement);
   }
 
   public static class TypeParameterSearcher extends PsiTypeVisitor<Boolean> {

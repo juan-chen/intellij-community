@@ -254,7 +254,7 @@ public class IdeFrameFixture extends ComponentFixture<IdeFrameFixture, IdeFrameI
   @NotNull
   public GutterFixture getGutter() {
     if (myGutter == null) {
-      myGutter = new GutterFixture( this);
+      myGutter = new GutterFixture(this);
     }
     return myGutter;
   }
@@ -465,7 +465,7 @@ public class IdeFrameFixture extends ComponentFixture<IdeFrameFixture, IdeFrameI
         RunConfigurationComboBoxFixture runConfigurationComboBox = RunConfigurationComboBoxFixture.find(IdeFrameFixture.this);
         return isNotEmpty(runConfigurationComboBox.getText());
       }
-    }, GuiTestUtil.SHORT_TIMEOUT);
+    }, GuiTestUtil.INSTANCE.getSHORT_TIMEOUT());
 
     waitForBackgroundTasksToFinish();
     findGradleSyncAction().waitUntilEnabledAndShowing();
@@ -559,7 +559,7 @@ public class IdeFrameFixture extends ComponentFixture<IdeFrameFixture, IdeFrameI
                            !progressManager.hasUnsafeProgressIndicator();
                   }
                 }
-      , GuiTestUtil.FIFTEEN_MIN_TIMEOUT);
+      , GuiTestUtil.INSTANCE.getFIFTEEN_MIN_TIMEOUT());
     robot().waitForIdle();
     return this;
   }
@@ -571,16 +571,19 @@ public class IdeFrameFixture extends ComponentFixture<IdeFrameFixture, IdeFrameI
 
   @NotNull
   public IdeFrameFixture waitForStartingIndexing(int secondsToWait) {
-    pause(new Condition("Indexing to start") {
-            @Override
-            public boolean test() {
-              ProgressManager progressManager = ProgressManager.getInstance();
-              return progressManager.hasModalProgressIndicator() ||
-                     progressManager.hasProgressIndicator() ||
-                     progressManager.hasUnsafeProgressIndicator();
+    try {
+      pause(new Condition("Indexing to start") {
+              @Override
+              public boolean test() {
+                ProgressManager progressManager = ProgressManager.getInstance();
+                return progressManager.hasModalProgressIndicator() ||
+                       progressManager.hasProgressIndicator() ||
+                       progressManager.hasUnsafeProgressIndicator();
+              }
             }
-          }
-      , Timeout.timeout(secondsToWait, TimeUnit.SECONDS));
+        , Timeout.timeout(secondsToWait, TimeUnit.SECONDS));
+    }
+    catch (WaitTimedOutError ignored){}
     robot().waitForIdle();
     return this;
   }
@@ -710,7 +713,7 @@ public class IdeFrameFixture extends ComponentFixture<IdeFrameFixture, IdeFrameI
     JButton button = robot().finder().find(dialog, JButtonMatcher.withText("OK").andShowing());
     robot().click(button);
 
-    final InspectionTree tree = GuiTestUtil.waitUntilFound(robot(), new GenericTypeMatcher<InspectionTree>(InspectionTree.class) {
+    final InspectionTree tree = GuiTestUtil.INSTANCE.waitUntilFound(robot(), new GenericTypeMatcher<InspectionTree>(InspectionTree.class) {
       @Override
       protected boolean isMatching(@NotNull InspectionTree component) {
         return true;
@@ -828,19 +831,19 @@ public class IdeFrameFixture extends ComponentFixture<IdeFrameFixture, IdeFrameI
   /////////////////////////////////////////////////////////////////
 
   public void resumeProgram() {
-    GuiTestUtil.invokeMenuPathOnRobotIdle(this, "Run", "Resume Program");
+    GuiTestUtil.INSTANCE.invokeMenuPathOnRobotIdle(this, "Run", "Resume Program");
   }
 
   public void stepOver() {
-    GuiTestUtil.invokeMenuPathOnRobotIdle(this, "Run", "Step Over");
+    GuiTestUtil.INSTANCE.invokeMenuPathOnRobotIdle(this, "Run", "Step Over");
   }
 
   public void stepInto() {
-    GuiTestUtil.invokeMenuPathOnRobotIdle(this, "Run", "Step Into");
+    GuiTestUtil.INSTANCE.invokeMenuPathOnRobotIdle(this, "Run", "Step Into");
   }
 
   public void stepOut() {
-    GuiTestUtil.invokeMenuPathOnRobotIdle(this, "Run", "Step Out");
+    GuiTestUtil.INSTANCE.invokeMenuPathOnRobotIdle(this, "Run", "Step Out");
   }
 
   /**
@@ -850,11 +853,11 @@ public class IdeFrameFixture extends ComponentFixture<IdeFrameFixture, IdeFrameI
   public void toggleBreakPoints(String fileBasename, int[] lines) {
     // We open the file twice to bring the editor into focus. Idea 1.15 has this bug where opening a file doesn't automatically bring its
     // editor window into focus.
-    GuiTestUtil.openFile(this, fileBasename);
-    GuiTestUtil.openFile(this, fileBasename);
+    GuiTestUtil.INSTANCE.openFile(this, fileBasename);
+    GuiTestUtil.INSTANCE.openFile(this, fileBasename);
     for (int line : lines) {
-      GuiTestUtil.navigateToLine(this, line);
-      GuiTestUtil.invokeMenuPathOnRobotIdle(this, "Run", "Toggle Line Breakpoint");
+      GuiTestUtil.INSTANCE.navigateToLine(this, line);
+      GuiTestUtil.INSTANCE.invokeMenuPathOnRobotIdle(this, "Run", "Toggle Line Breakpoint");
     }
   }
 

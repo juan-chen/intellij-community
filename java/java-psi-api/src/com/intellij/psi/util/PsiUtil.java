@@ -665,6 +665,7 @@ public final class PsiUtil extends PsiUtilCore {
   }
 
   /** @deprecated use more generic {@link #isCompileTimeConstant(PsiVariable)} instead */
+  @Deprecated
   public static boolean isCompileTimeConstant(@NotNull final PsiField field) {
     return isCompileTimeConstant((PsiVariable)field);
   }
@@ -723,7 +724,7 @@ public final class PsiUtil extends PsiUtilCore {
 
   @Nullable
   public static PsiClass getTopLevelClass(@NotNull PsiElement element) {
-    PsiClass topClass = JBIterable.generate(element, PsiElement::getParent).filter(PsiClass.class).last();
+    PsiClass topClass = JBIterable.generate(element, PsiElement::getParent).takeWhile(e -> !(e instanceof PsiFile)).filter(PsiClass.class).last();
     return topClass instanceof PsiTypeParameter ? null : topClass;
   }
 
@@ -946,6 +947,7 @@ public final class PsiUtil extends PsiUtilCore {
   /**
    * @deprecated Use {@link #canBeOverridden(PsiMethod)} instead
    */
+  @Deprecated
   public static boolean canBeOverriden(@NotNull PsiMethod method) {
     return canBeOverridden(method);
   }

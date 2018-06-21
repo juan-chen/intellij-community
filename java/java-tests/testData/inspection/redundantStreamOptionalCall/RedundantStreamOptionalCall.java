@@ -63,5 +63,13 @@ public class RedundantStreamOptionalCall {
     LongStream.of(123).filter(x -> x > 0).mapToObj(String::valueOf).flatMap(x -> Stream.of(x, x+x)).distinct();
     Stream.of("foo").flatMap(x -> Stream.of(x, x)).parallel();
     Stream.of("foo").flatMap(x -> Stream.of(x, x)).<warning descr="Redundant 'parallel' call: stream created from single element will not be parallelized">parallel()</warning>.forEach(System.out::println);
+
+    Stream.of("foo", "bar", "baz").<warning descr="Redundant 'sorted' call: subsequent 'sorted' call makes sorting useless">sorted()</warning>.sorted(Comparator.<String>naturalOrder().reversed());
+    Stream.of("foo", "bar", "baz").sorted().sorted(Comparator.comparing(x -> x.charAt(0) == 'b'));
+    Stream.of("foo", "bar", "baz").<warning descr="Redundant 'sorted' call: subsequent 'sorted' call makes sorting useless">sorted()</warning>.sorted(Comparator.comparing(x -> x.charAt(0) == 'b')).sorted(Comparator.reverseOrder());
+
+    Stream.of("foo", "bar", "baz").<warning descr="Redundant 'sorted' call: subsequent 'max' call makes sorting useless">sorted(String.CASE_INSENSITIVE_ORDER)</warning>.max(String.CASE_INSENSITIVE_ORDER.reversed());
+    Stream.of("foo", "bar", "baz").<warning descr="Redundant 'sorted' call: subsequent 'min' call makes sorting useless">sorted(String.CASE_INSENSITIVE_ORDER)</warning>.min(String.CASE_INSENSITIVE_ORDER);
+    Stream.of("foo", "bar", "baz").sorted(String.CASE_INSENSITIVE_ORDER).min(Comparator.naturalOrder());
   }
 }

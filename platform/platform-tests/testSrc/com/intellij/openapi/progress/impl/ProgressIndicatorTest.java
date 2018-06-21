@@ -362,7 +362,7 @@ public class ProgressIndicatorTest extends LightPlatformTestCase {
   }
 
   public void testProgressPerformance() {
-    PlatformTestUtil.startPerformanceTest("executeProcessUnderProgress", 100, () -> {
+    PlatformTestUtil.startPerformanceTest("executeProcessUnderProgress", 400, () -> {
       EmptyProgressIndicator indicator = new EmptyProgressIndicator();
       for (int i=0;i<100000;i++) {
         ProgressManager.getInstance().executeProcessUnderProgress(EmptyRunnable.getInstance(), indicator);
@@ -475,11 +475,6 @@ public class ProgressIndicatorTest extends LightPlatformTestCase {
     @NotNull
     @Override
     public Stack<String> getText2Stack() {
-      throw new RuntimeException();
-    }
-
-    @Override
-    public int getNonCancelableCount() {
       throw new RuntimeException();
     }
 

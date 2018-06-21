@@ -2,6 +2,7 @@
 package com.intellij.psi.util;
 
 import com.intellij.codeInsight.AnnotationUtil;
+import com.intellij.codeInsight.Nullability;
 import com.intellij.codeInsight.NullableNotNullManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressManager;
@@ -281,24 +282,19 @@ public class RedundantCastUtil {
              MethodSignatureUtil.isSuperMethod(newTargetMethod, targetMethod) &&
              // see SCR11555, SCR14559
              areThrownExceptionsCompatible(targetMethod, newTargetMethod) &&
-             areNullnessCompatible(project, targetMethod, newTargetMethod))) {
+             areNullabilityCompatible(targetMethod, newTargetMethod))) {
           addToResults(typeCast);
         }
       }
       catch (IncorrectOperationException ignore) { }
     }
 
-    private static boolean areNullnessCompatible(Project project,
-                                                 final PsiMethod oldTargetMethod,
-                                                 final PsiMethod newTargetMethod) {
+    private static boolean areNullabilityCompatible(final PsiMethod oldTargetMethod,
+                                                    final PsiMethod newTargetMethod) {
       // the cast may be for the @NotNull which newTargetMethod has whereas the oldTargetMethod doesn't
-      NullableNotNullManager nnm = NullableNotNullManager.getInstance(project);
-      boolean oldNotNull = nnm.isNotNull(oldTargetMethod, true);
-      boolean newNotNull = nnm.isNotNull(newTargetMethod, true);
-      if (oldNotNull != newNotNull) return false;
-      boolean oldNullable = nnm.isNullable(oldTargetMethod, true);
-      boolean newNullable = nnm.isNullable(newTargetMethod, true);
-      return oldNullable == newNullable;
+      Nullability oldNullability = NullableNotNullManager.getNullability(oldTargetMethod);
+      Nullability newNullability = NullableNotNullManager.getNullability(newTargetMethod);
+      return oldNullability == newNullability;
     }
 
     private static boolean areThrownExceptionsCompatible(final PsiMethod targetMethod, final PsiMethod newTargetMethod) {
@@ -541,7 +537,10 @@ public class RedundantCastUtil {
             if (opposite == null || conditionalType instanceof PsiPrimitiveType &&
                                     !Comparing.equal(conditionalType, opposite.getType())) return;
           }
-        } else if (parent instanceof PsiSynchronizedStatement && expr != null && expr.getType() instanceof PsiPrimitiveType) {
+        }
+        else if (parent instanceof PsiSynchronizedStatement &&
+                 expr != null &&
+                 (expr.getType() instanceof PsiPrimitiveType || expr instanceof PsiFunctionalExpression)) {
           return;
         } else if (expr instanceof PsiLambdaExpression || expr instanceof PsiMethodReferenceExpression) {
           if (parent instanceof PsiParenthesizedExpression && parent.getParent() instanceof PsiReferenceExpression) {

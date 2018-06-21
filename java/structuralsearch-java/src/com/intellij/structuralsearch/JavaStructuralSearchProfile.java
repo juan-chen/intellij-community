@@ -2,7 +2,6 @@
 package com.intellij.structuralsearch;
 
 import com.intellij.codeInsight.AnnotationUtil;
-import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
 import com.intellij.codeInsight.template.JavaCodeContextType;
 import com.intellij.codeInsight.template.TemplateContextType;
 import com.intellij.dupLocator.iterators.NodeIterator;
@@ -10,9 +9,6 @@ import com.intellij.dupLocator.util.NodeFilter;
 import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.lang.Language;
 import com.intellij.lang.java.JavaLanguage;
-import com.intellij.openapi.editor.Document;
-import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.LanguageFileType;
 import com.intellij.openapi.fileTypes.StdFileTypes;
@@ -39,7 +35,6 @@ import com.intellij.structuralsearch.plugin.replace.impl.ReplacementBuilder;
 import com.intellij.structuralsearch.plugin.replace.impl.ReplacementContext;
 import com.intellij.structuralsearch.plugin.replace.impl.Replacer;
 import com.intellij.structuralsearch.plugin.ui.Configuration;
-import com.intellij.structuralsearch.plugin.ui.SearchContext;
 import com.intellij.structuralsearch.plugin.ui.UIUtil;
 import com.intellij.util.ArrayUtil;
 import com.intellij.util.IncorrectOperationException;
@@ -375,45 +370,6 @@ public class JavaStructuralSearchProfile extends StructuralSearchProfile {
       return true;
     }
     return false;
-  }
-
-  @NotNull
-  @Override
-  public Editor createEditor(@NotNull SearchContext searchContext,
-                             @NotNull FileType fileType,
-                             Language dialect,
-                             String text,
-                             boolean useLastConfiguration) {
-    // provides autocompletion
-
-    PsiElement element = searchContext.getFile();
-
-    final Project project = searchContext.getProject();
-    if (element != null && !useLastConfiguration) {
-      final Editor selectedEditor = FileEditorManager.getInstance(project).getSelectedTextEditor();
-
-      if (selectedEditor != null) {
-        int caretPosition = selectedEditor.getCaretModel().getOffset();
-        PsiElement positionedElement = searchContext.getFile().findElementAt(caretPosition);
-
-        if (positionedElement == null) {
-          positionedElement = searchContext.getFile().findElementAt(caretPosition + 1);
-        }
-
-        if (positionedElement != null) {
-          element = PsiTreeUtil.getParentOfType(
-            positionedElement,
-            PsiClass.class, PsiCodeBlock.class
-          );
-        }
-      }
-    }
-
-    final PsiCodeFragment file = createCodeFragment(project, text, element);
-    final Document doc = PsiDocumentManager.getInstance(project).getDocument(file);
-    assert doc != null;
-    DaemonCodeAnalyzer.getInstance(project).setHighlightingEnabled(file, false);
-    return UIUtil.createEditor(doc, project, true, true, getTemplateContextType());
   }
 
   @NotNull
@@ -803,17 +759,17 @@ public class JavaStructuralSearchProfile extends StructuralSearchProfile {
   private static int removeExtraSemicolon(ParameterInfo info, int offset, StringBuilder result, MatchResult match) {
     if (info.isStatementContext()) {
       final int index = offset + info.getStartIndex();
-      if (result.charAt(index)==';' &&
-          ( match == null ||
+      final PsiElement matchElement = (match == null) ? null : match.getMatch();
+      if (result.charAt(index) == ';' &&
+          ( matchElement == null ||
             ( result.charAt(index-1)=='}' &&
-              !(match.getMatch() instanceof PsiDeclarationStatement) && // array init in dcl
-              !(match.getMatch() instanceof PsiNewExpression) // array initializer
+              !(matchElement instanceof PsiDeclarationStatement) && // array init in dcl
+              !(matchElement instanceof PsiNewExpression) && // array initializer
+              !(matchElement instanceof PsiArrayInitializerExpression)
             ) ||
-            ( !match.isMultipleMatch() &&                                                // ; in comment
-              match.getMatch() instanceof PsiComment
-            ) ||
-            ( match.isMultipleMatch() &&                                                 // ; in comment
-              match.getChildren().get( match.getChildren().size() - 1 ).getMatch() instanceof PsiComment
+            ( match.isMultipleMatch()  // ; in comment
+              ? match.getChildren().get(match.getChildren().size() - 1).getMatch() instanceof PsiComment
+              : matchElement instanceof PsiComment
             )
           )
         ) {

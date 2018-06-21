@@ -20,6 +20,7 @@ import com.intellij.dvcs.DvcsRememberedInputs;
 import com.intellij.dvcs.DvcsUtil;
 import com.intellij.dvcs.hosting.RepositoryHostingService;
 import com.intellij.dvcs.hosting.RepositoryListLoader;
+import com.intellij.dvcs.hosting.RepositoryListLoadingException;
 import com.intellij.ide.impl.ProjectUtil;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.ActionManager;
@@ -109,6 +110,7 @@ public abstract class CloneDvcsDialog extends DialogWrapper {
   @NotNull private final List<String> myLoadedRepositoryHostingServicesNames;
   @Nullable private Alarm myRepositoryUrlAutoCompletionTooltipAlarm;
   @NotNull private final Set<String> myUniqueAvailableRepositories;
+  @NotNull private List<ValidationInfo> myRepositoryListLoadingErrors = new ArrayList<>();
 
   public CloneDvcsDialog(@NotNull Project project, @NotNull String displayName, @NotNull String vcsDirectoryName) {
     this(project, displayName, vcsDirectoryName, null);
@@ -261,7 +263,7 @@ public abstract class CloneDvcsDialog extends DialogWrapper {
 
     List<Action> loginActions = new ArrayList<>();
     Map<String, RepositoryListLoader> enabledLoaders = new HashMap<>();
-    for (RepositoryHostingService service : repositoryHostingServices) {
+    for (RepositoryHostingService service: repositoryHostingServices) {
       String serviceDisplayName = service.getServiceDisplayName();
       RepositoryListLoader loader = service.getRepositoryListLoader(myProject);
       if (loader == null) continue;
@@ -304,18 +306,23 @@ public abstract class CloneDvcsDialog extends DialogWrapper {
   private void schedule(@NotNull String serviceDisplayName, @NotNull RepositoryListLoader loader) {
     mySpinnerProgressManager.run(new Task.Backgroundable(myProject, "Not Visible") {
       private final List<String> myNewRepositories = new ArrayList<>();
+      private final List<RepositoryListLoadingException> myErrors = new ArrayList<>();
 
       @Override
       public void run(@NotNull ProgressIndicator indicator) {
-        for (String repository : loader.getAvailableRepositories(indicator)) {
+        RepositoryListLoader.Result loadingResult =
+          loader.getAvailableRepositoriesFromMultipleSources(indicator);
+        for (String repository: loadingResult.getUrls()) {
           if (myUniqueAvailableRepositories.add(repository)) {
             myNewRepositories.add(repository);
           }
         }
+        myErrors.addAll(loadingResult.getErrors());
       }
 
       @Override
       public void onSuccess() {
+        if (mySpinnerProgressManager.getDisposed()) return;
         if (!myNewRepositories.isEmpty()) {
           // otherwise editor content will be reset
           myRepositoryUrlCombobox.setSelectedItem(myRepositoryUrlField.getText());
@@ -324,11 +331,16 @@ public abstract class CloneDvcsDialog extends DialogWrapper {
         }
         myLoadedRepositoryHostingServicesNames.add(serviceDisplayName);
         showRepositoryUrlAutoCompletionTooltip();
-      }
-
-      @Override
-      public void onThrowable(@NotNull Throwable error) {
-        //TODO: show warning
+        if (!myErrors.isEmpty()) {
+          for (RepositoryListLoadingException error: myErrors) {
+            StringBuilder errorMessageBuilder = new StringBuilder();
+            errorMessageBuilder.append(error.getMessage());
+            Throwable cause = error.getCause();
+            if (cause != null) errorMessageBuilder.append(": ").append(cause.getMessage());
+            myRepositoryListLoadingErrors.add(new ValidationInfo(errorMessageBuilder.toString(), false));
+          }
+          startTrackingValidation();
+        }
       }
     });
   }
@@ -416,6 +428,7 @@ public abstract class CloneDvcsDialog extends DialogWrapper {
     ContainerUtil.addIfNotNull(infoList, myCreateDirectoryValidationInfo);
     ContainerUtil.addIfNotNull(infoList, urlValidation);
     ContainerUtil.addIfNotNull(infoList, directoryValidation);
+    infoList.addAll(myRepositoryListLoadingErrors);
     return infoList;
   }
 

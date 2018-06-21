@@ -5,167 +5,101 @@ import com.intellij.execution.ExecutionListener;
 import com.intellij.execution.ExecutionManager;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.runners.ExecutionEnvironment;
-import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.execution.ui.RunContentDescriptor;
+import com.intellij.openapi.actionSystem.ActionGroup;
+import com.intellij.openapi.actionSystem.DataProvider;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.application.ModalityState;
-import com.intellij.openapi.application.impl.LaterInvocator;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.ex.EditorEx;
 import com.intellij.openapi.editor.ex.FocusChangeListener;
-import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.project.ProjectManagerListener;
-import com.intellij.openapi.ui.DialogWrapper;
-import com.intellij.openapi.ui.OptionAction;
 import com.intellij.openapi.ui.popup.JBPopupListener;
 import com.intellij.openapi.ui.popup.LightweightWindowEvent;
-import com.intellij.openapi.ui.popup.ListPopupStep;
-import com.intellij.openapi.ui.popup.MnemonicNavigationFilter;
-import com.intellij.openapi.util.Comparing;
-import com.intellij.openapi.wm.ToolWindow;
+import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.wm.ToolWindowId;
-import com.intellij.openapi.wm.ex.ToolWindowManagerEx;
-import com.intellij.openapi.wm.ex.ToolWindowManagerListener;
-import com.intellij.ui.components.JBOptionButton;
-import com.intellij.ui.mac.foundation.Foundation;
-import com.intellij.ui.mac.foundation.ID;
+import com.intellij.ui.mac.TouchbarDataKeys;
 import com.intellij.ui.popup.list.ListPopupImpl;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import javax.swing.Timer;
 import java.awt.*;
-import java.awt.event.ActionEvent;
 import java.awt.event.FocusEvent;
 import java.awt.event.InputEvent;
 import java.awt.event.MouseWheelEvent;
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class TouchBarsManager {
-  private final static boolean IS_LOGGING_ENABLED = false;
   private static final Logger LOG = Logger.getInstance(TouchBarsManager.class);
-  private static final ArrayDeque<BarContainer> ourTouchBarStack = new ArrayDeque<>();
-  private static final TouchBarHolder ourTouchBarHolder = new TouchBarHolder();
-  private static long ourCurrentKeyMask;
+  private static final StackTouchBars ourStack = new StackTouchBars();
 
   private static final Map<Project, ProjectData> ourProjectData = new HashMap<>(); // NOTE: probably it is better to use api of UserDataHolder
-
-  public static void attachEditorBar(EditorEx editor) {
-    if (!isTouchBarAvailable())
-      return;
-
-    final Project proj = editor.getProject();
-    if (proj == null)
-      return;
-
-    editor.addFocusListener(new FocusChangeListener() {
-      @Override
-      public void focusGained(Editor editor) {
-        _elevateTouchBar(_getProjData(proj).get(BarType.DEFAULT));
-      }
-      @Override
-      public void focusLost(Editor editor) {}
-    });
-  }
-
-  public static void attachPopupBar(@NotNull ListPopupImpl listPopup) {
-    if (!isTouchBarAvailable())
-      return;
-
-    listPopup.addPopupListener(new JBPopupListener() {
-        private TouchBar myPopupBar = _createScrubberBarFromPopup(listPopup);
-        @Override
-        public void beforeShown(LightweightWindowEvent event) {
-          _showTempTouchBar(myPopupBar, BarType.POPUP);
-        }
-        @Override
-        public void onClosed(LightweightWindowEvent event) {
-          closeTouchBar(myPopupBar, true);
-          myPopupBar = null;
-        }
-      }
-    );
-  }
-
-  public static TouchBar showDlgButtonsBar(List<JButton> jbuttons, Project project) {
-    final TouchBar tb = _createButtonsBar(jbuttons, project);
-    _showTempTouchBar(tb, BarType.DIALOG);
-    return tb;
-  }
 
   public static void initialize() {
     if (!isTouchBarAvailable())
       return;
 
-    final ID app = Foundation.invoke("NSApplication", "sharedApplication");
-    Foundation.invoke(app, "setAutomaticCustomizeTouchBarMenuItemEnabled:", true);
-
     ApplicationManager.getApplication().getMessageBus().connect().subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
       @Override
-      public void projectOpened(Project project) {
-        trace("opened project %s, set default touchbar", project);
+      public void projectOpened(@NotNull Project project) {
+        ApplicationManager.getApplication().assertIsDispatchThread();
+        // System.out.println("opened project " + project + ", set default touchbar");
 
-        final ProjectData pd = _getProjData(project);
-        showTouchBar(pd.get(BarType.DEFAULT));
+        final ProjectData pd = new ProjectData(project);
+        final ProjectData prev = ourProjectData.put(project, pd);
+        if (prev != null) {
+          LOG.error("previous project data wasn't removed: " + project);
+          prev.releaseAll();
+        }
 
-        project.getMessageBus().connect().subscribe(ToolWindowManagerListener.TOPIC, new ToolWindowManagerListener() {
-          @Override
-          public void stateChanged() {
-            final ToolWindowManagerEx twm = ToolWindowManagerEx.getInstanceEx(project);
-            final String activeId = twm.getActiveToolWindowId();
-            if (activeId != null && activeId.equals(ToolWindowId.DEBUG)) {
-              // System.out.println("stateChanged, dbgSessionsCount=" + pd.getDbgSessions());
-              if (pd.getDbgSessions() <= 0)
-                return;
-
-              showTouchBar(pd.get(BarType.DEBUGGER));
-            }
-          }
-        });
+        pd.get(BarType.DEFAULT).show();
 
         project.getMessageBus().connect().subscribe(ExecutionManager.EXECUTION_TOPIC, new ExecutionListener() {
           @Override
-          public void processStarted(@NotNull String executorId, @NotNull ExecutionEnvironment env, @NotNull ProcessHandler handler) { ourTouchBarHolder.updateCurrent(); }
+          public void processStarted(@NotNull String executorId, @NotNull ExecutionEnvironment env, @NotNull ProcessHandler handler) {
+            ApplicationManager.getApplication().invokeLater(TouchBarsManager::_updateCurrentTouchbar);
+          }
           @Override
           public void processTerminated(@NotNull String executorId, @NotNull ExecutionEnvironment env, @NotNull ProcessHandler handler, int exitCode) {
-            final TouchBar curr;
-            final BarContainer top;
-            synchronized (TouchBarsManager.class) {
-              top = ourTouchBarStack.peek();
-              if (top == null)
-                return;
+            // TODO: probably, need to remove debugger-panel from stack completely
+            ourStack.pop(topContainer -> {
+              if (topContainer.getType() != BarType.DEBUGGER)
+                return false;
+              if (!executorId.equals(ToolWindowId.DEBUG) && !executorId.equals(ToolWindowId.RUN_DASHBOARD))
+                return false;
 
-              curr = top.get();
-              final boolean isDebugger = top.getType() == BarType.DEBUGGER;
-              if (isDebugger) {
-                if (executorId.equals(ToolWindowId.DEBUG)) {
-                  // System.out.println("processTerminated, dbgSessionsCount=" + pd.getDbgSessions());
-                  final boolean hasDebugSession = _hasAnyActiveSession(project, handler);
-                  if (!hasDebugSession || pd.getDbgSessions() <= 0)
-                    closeTouchBar(top);
-                }
-              }
-            }
-
-            if (curr instanceof TouchBarActionBase)
-              ApplicationManager.getApplication().invokeLater(() -> { ((TouchBarActionBase)curr).updateActionItems(); });
+              // System.out.println("processTerminated, dbgSessionsCount=" + pd.getDbgSessions());
+              return !_hasAnyActiveSession(project, handler) || pd.getDbgSessions() <= 0;
+            });
+            ApplicationManager.getApplication().invokeLater(TouchBarsManager::_updateCurrentTouchbar);
           }
         });
       }
+
       @Override
-      public void projectClosed(Project project) {
-        trace("closed project %s, hide touchbar", project);
-        final ProjectData pd = _getProjData(project);
-        closeTouchBar(pd.get(BarType.DEFAULT));
+      public void projectClosed(@NotNull Project project) {
+        ApplicationManager.getApplication().assertIsDispatchThread();
+        // System.out.println("closed project: " + project);
+
+        final ProjectData pd = ourProjectData.get(project);
+        if (pd == null) {
+          LOG.error("project data already was removed: " + project);
+          return;
+        }
+        ourStack.removeAll(pd.getAllContainers());
         pd.releaseAll();
         ourProjectData.remove(project);
       }
     });
   }
+
+  public static boolean isTouchBarAvailable() { return NST.isAvailable(); }
 
   public static void reloadAll() {
     if (!isTouchBarAvailable())
@@ -174,10 +108,8 @@ public class TouchBarsManager {
     ourProjectData.forEach((p, pd)->{
       pd.reloadAll();
     });
-    _setBarContainer(ourTouchBarStack.peek());
+    ourStack.setTouchBarFromTopContainer();
   }
-
-  public static boolean isTouchBarAvailable() { return NST.isAvailable(); }
 
   public static void onInputEvent(InputEvent e) {
     if (!isTouchBarAvailable())
@@ -188,335 +120,189 @@ public class TouchBarsManager {
     if (e instanceof MouseWheelEvent)
       return;
 
-    if (ourCurrentKeyMask != e.getModifiersEx()) {
-//      LOG.debug("change current mask: 0x%X -> 0x%X\n", ourCurrentKeyMask, e.getModifiersEx());
-      ourCurrentKeyMask = e.getModifiersEx();
-      _setBarContainer(ourTouchBarStack.peek());
-    }
+    ourStack.updateKeyMask(e.getModifiersEx());
   }
 
   public static void onFocusEvent(AWTEvent e) {
     if (!isTouchBarAvailable())
       return;
 
-    // NOTE: WindowEvent.WINDOW_GAINED_FOCUS can be fired when frame focuse
+    // NOTE: WindowEvent.WINDOW_GAINED_FOCUS can be fired when frame focused
     if (e.getID() == FocusEvent.FOCUS_GAINED) {
-      ourProjectData.forEach((project, data) -> {
-        final ToolWindowManagerEx twm = ToolWindowManagerEx.getInstanceEx(project);
-        if (twm == null)
-          return;
+      if (!(e.getSource() instanceof Component))
+        return;
 
-        final ToolWindow dtw = twm.getToolWindow(ToolWindowId.DEBUG);
-        if (dtw == null)
-          return;
+      for (ProjectData pd: ourProjectData.values()) {
+        if (pd.isDisposed())
+          continue;
 
-        final Component comp = dtw.getComponent();
-        if (comp == null)
+        if (pd.checkToolWindowContents((Component)e.getSource())) {
+          // System.out.println("tool window gained focus: " + e);
           return;
+        }
 
-        if (!(e.getSource() instanceof Component))
+        final BarContainer parent = pd.findByComponent((Component)e.getSource());
+        if (parent != null) {
+          // System.out.println("component gained focus: " + e);
+          ourStack.showContainer(parent);
           return;
-
-        if (e.getSource() == comp || SwingUtilities.isDescendingFrom((Component)e.getSource(), comp))
-          showTouchBar(data.get(BarType.DEBUGGER));
-      });
+        }
+      }
     }
   }
 
+  public static void registerEditor(@NotNull Editor editor) {
+    if (!isTouchBarAvailable())
+      return;
 
-  synchronized public static void showStopRunningBar(TouchBar tb) {
-    _showTempTouchBar(tb, BarType.DIALOG);
+    ApplicationManager.getApplication().assertIsDispatchThread();
+
+    final Project proj = editor.getProject();
+    if (proj == null || proj.isDisposed())
+      return;
+
+    final ProjectData pd = ourProjectData.get(proj);
+    if (pd == null) {
+      LOG.error("can't find project data to register editor: " + editor + ", project: " + proj);
+      return;
+    }
+
+    pd.registerEditor(editor);
+
+    if (editor instanceof EditorEx)
+      ((EditorEx)editor).addFocusListener(new FocusChangeListener() {
+      @Override
+      public void focusGained(Editor editor) {
+        // System.out.println("reset optional-context of default because editor window gained focus: " + editor);
+        pd.get(BarType.DEFAULT).setOptionalContextVisible(null);
+
+        final boolean hasDebugSession = pd.getDbgSessions() > 0;
+        if (!hasDebugSession) {
+          // System.out.println("elevate default because editor window gained focus: " + editor);
+          ourStack.elevateContainer(pd.get(BarType.DEFAULT));
+        }
+      }
+      @Override
+      public void focusLost(Editor editor) {}
+    });
   }
 
-  synchronized public static Runnable showMessageDlgBar(@NotNull String[] buttons, @NotNull Runnable[] actions, String defaultButton) {
+  public static void releaseEditor(@NotNull Editor editor) {
+    if (!isTouchBarAvailable())
+      return;
+
+    ApplicationManager.getApplication().assertIsDispatchThread();
+
+    final Project proj = editor.getProject();
+    if (proj == null)
+      return;
+
+    final ProjectData pd = ourProjectData.get(proj);
+    if (pd == null)
+      return;
+
+    pd.removeEditor(editor);
+  }
+
+  public static void onUpdateEditorHeader(@NotNull Editor editor, JComponent header) {
+    if (!isTouchBarAvailable())
+      return;
+
+    ApplicationManager.getApplication().assertIsDispatchThread();
+
+    final Project proj = editor.getProject();
+    if (proj == null)
+      return;
+
+    final ProjectData pd = ourProjectData.get(proj);
+    if (pd == null) {
+      LOG.error("can't find project data to update header of editor: " + editor + ", project: " + proj);
+      return;
+    }
+
+    final ProjectData.EditorData ed = pd.getEditorData(editor);
+    if (ed == null) {
+      LOG.error("can't find editor-data to update header of editor: " + editor + ", project: " + proj);
+      return;
+    }
+
+    final ActionGroup actions = header instanceof DataProvider ? TouchbarDataKeys.ACTIONS_KEY.getData((DataProvider)header) : null;
+    if (header == null) {
+      // System.out.println("set null header");
+      ed.editorHeader = null;
+      if (ed.containerSearch != null)
+        ourStack.removeContainer(ed.containerSearch);
+    } else {
+      // System.out.println("set header: " + header);
+      // System.out.println("\t\tparent: " + header.getParent());
+      ed.editorHeader = header;
+
+      if (ed.containerSearch == null || ed.actionsSearch != actions) {
+        if (ed.containerSearch != null) {
+          ourStack.removeContainer(ed.containerSearch);
+          ed.containerSearch.release();
+        }
+
+        ed.containerSearch = new BarContainer(BarType.EDITOR_SEARCH, TouchBar.buildFromGroup("editor_search_" + header, actions, false), null);
+        ourStack.showContainer(ed.containerSearch);
+      }
+    }
+  }
+
+  public static void attachPopupBar(@NotNull ListPopupImpl listPopup) {
+    if (!isTouchBarAvailable())
+      return;
+
+    listPopup.addPopupListener(new JBPopupListener() {
+        private TouchBar myPopupBar = BuildUtils.createScrubberBarFromPopup(listPopup);
+        @Override
+        public void beforeShown(LightweightWindowEvent event) {
+          _showTempTouchBar(myPopupBar, BarType.POPUP);
+        }
+        @Override
+        public void onClosed(LightweightWindowEvent event) {
+          ourStack.removeTouchBar(myPopupBar);
+          myPopupBar = null;
+        }
+      }
+    );
+  }
+
+  public static @Nullable Runnable showDlgButtonsBar(List<JButton> jbuttons) {
     if (!isTouchBarAvailable())
       return null;
 
-    // NOTE: buttons are placed from right to left, see SheetController.layoutButtons
-    final List<TBItem> groupButtons = new ArrayList<>();
-    int defIndex = -1;
-    final int len = Math.min(buttons.length, actions.length);
-    for (int c = 0; c < len; ++c) {
-      final String sb = buttons[c];
-      final boolean isDefault = Comparing.equal(sb, defaultButton);
-      if (isDefault) {
-        defIndex = c;
-        continue;
-      }
-      groupButtons.add(new TBItemButton(
-        "message_dlg_bar_group_item_" + c,
-        null, DialogWrapper.extractMnemonic(sb).second, NSTLibrary.run2act(actions[c]), -1, 0
-      ));
-    }
-    Collections.reverse(groupButtons);
-
-    if (defIndex >= 0)
-      groupButtons.add(new TBItemButton(
-        "message_dlg_bar_group_item_default",
-        null, DialogWrapper.extractMnemonic(buttons[defIndex]).second, NSTLibrary.run2act(actions[defIndex]), -1, NSTLibrary.BUTTON_FLAG_COLORED
-      ));
-
-    final TouchBar tb;
-    try (NSAutoreleaseLock lock = new NSAutoreleaseLock()) {
-      tb = new TouchBar("message_dlg_bar", false);
-      final TBItemGroup gr = tb.addGroup(groupButtons);
-      tb.setPrincipal(gr);
-    }
-
+    final TouchBar tb = BuildUtils.createButtonsBar(jbuttons);
     _showTempTouchBar(tb, BarType.DIALOG);
-    return ()->{closeTouchBar(tb, true);};
+    return ()->{ourStack.removeTouchBar(tb);};
   }
 
-  synchronized private static void _showTempTouchBar(TouchBar tb, BarType type) {
-    if (tb == null)
-      return;
-
-    tb.selectVisibleItemsToShow();
-    BarContainer container = new BarContainer(type, tb, null);
-    showTouchBar(container);
-  }
-
-  synchronized public static void closeTouchBar(TouchBar tb, boolean doRelease) {
-    if (tb == null)
-      return;
-
-    if (doRelease)
-      tb.release();
-
-    if (ourTouchBarStack.isEmpty())
-      return;
-
-    BarContainer top = ourTouchBarStack.peek();
-    if (top.get() == tb) {
-      ourTouchBarStack.pop();
-      _setBarContainer(ourTouchBarStack.peek());
-    } else
-      ourTouchBarStack.removeIf(bc -> bc.isTemporary() && bc.get() == tb);
-  }
-
-  synchronized public static void showTouchBar(BarContainer bar) {
-    if (bar == null)
-      return;
-
-    final BarContainer top = ourTouchBarStack.peek();
-    if (top == bar)
-      return;
-
-    ourTouchBarStack.remove(bar);
-    ourTouchBarStack.push(bar);
-    _setBarContainer(bar);
-  }
-
-  synchronized private static void _elevateTouchBar(BarContainer bar) {
-    if (bar == null)
-      return;
-
-    final BarContainer top = ourTouchBarStack.peek();
-    if (top == bar)
-      return;
-
-    final boolean preserveTop = top != null && (top.isTemporary() || top.get().isManualClose());
-    if (preserveTop) {
-      ourTouchBarStack.remove(bar);
-      ourTouchBarStack.remove(top);
-      ourTouchBarStack.push(bar);
-      ourTouchBarStack.push(top);
-    } else {
-      ourTouchBarStack.remove(bar);
-      ourTouchBarStack.push(bar);
-      _setBarContainer(bar);
-    }
-  }
-
-  synchronized public static void closeTouchBar(BarContainer tb) {
-    if (tb == null || ourTouchBarStack.isEmpty())
-      return;
-
-    BarContainer top = ourTouchBarStack.peek();
-    if (top == tb) {
-      ourTouchBarStack.pop();
-      _setBarContainer(ourTouchBarStack.peek());
-    } else {
-      ourTouchBarStack.remove(tb);
-    }
-  }
-
-  synchronized private static void _setBarContainer(BarContainer barContainer) {
-    if (barContainer == null) {
-      ourTouchBarHolder.setTouchBar(null);
-      return;
-    }
-
-    barContainer.selectBarByKeyMask(ourCurrentKeyMask);
-    ourTouchBarHolder.setTouchBar(barContainer.get());
-  }
-
-  private static class TouchBarHolder {
-    private TouchBar myCurrentBar;
-    private TouchBar myNextBar;
-
-    synchronized void setTouchBar(TouchBar bar) {
-      // the usual event sequence "focus lost -> show underlay bar -> focus gained" produces annoying flicker
-      // use slightly deferred update to skip "showing underlay bar"
-      myNextBar = bar;
-      final Timer timer = new Timer(50, (event)->{
-        _setNextTouchBar();
-      });
-      timer.setRepeats(false);
-      timer.start();
-    }
-
-    synchronized void updateCurrent() {
-      if (myCurrentBar instanceof TouchBarActionBase)
-        ((TouchBarActionBase)myCurrentBar).updateActionItems();
-    }
-
-    synchronized private void _setNextTouchBar() {
-      if (myCurrentBar == myNextBar) {
-        return;
-      }
-
-      if (myCurrentBar != null)
-        myCurrentBar.onHide();
-      myCurrentBar = myNextBar;
-      if (myCurrentBar != null)
-        myCurrentBar.onBeforeShow();
-      NST.setTouchBar(myCurrentBar);
-    }
-  }
-
-  private static void trace(String fmt, Object... args) {
-    if (IS_LOGGING_ENABLED)
-      LOG.trace(String.format(fmt, args));
-  }
-
-  private static TouchBar _createButtonsBar(List<JButton> jbuttons, Project project) {
-    try (NSAutoreleaseLock lock = new NSAutoreleaseLock()) {
-      final TouchBarActionBase result = new TouchBarActionBase("dialog_buttons", project);
-      final ModalityState ms = LaterInvocator.getCurrentModalityState();
-
-      // 1. add option buttons (at left)
-      for (JButton jb : jbuttons) {
-        if (jb instanceof JBOptionButton) {
-          final JBOptionButton ob = (JBOptionButton)jb;
-          final Action[] opts = ob.getOptions();
-          for (Action a : opts) {
-            if (a == null)
-              continue;
-            final AnAction anAct = _createAnAction(a, ob, true);
-            if (anAct == null)
-              continue;
-
-            final TBItemAnActionButton butt = new TBItemAnActionButton(result.genNewID(a.toString()), anAct, false, TBItemAnActionButton.SHOWMODE_TEXT_ONLY, ms);
-            butt.setComponent(ob);
-            result.myItems.add(butt);
-          }
-        }
-      }
-
-      // 2. set different priorities for items, otherwise system can hide all items with the same priority (but some of them is able to be placed)
-      byte prio = -1;
-      for (TBItem item: result.myItems) {
-        if (item instanceof TBItemButton)
-          ((TBItemButton)item).setPriority(--prio);
-      }
-
-      // 3. add main buttons and make principal
-      final List<TBItem> groupButtons = new ArrayList<>();
-      TBItemAnActionButton def = null;
-      for (JButton jb : jbuttons) {
-        // TODO: make correct processing for disabled buttons, add them and update state by timer
-        // NOTE: can be true: jb.getAction().isEnabled() && !jb.isEnabled()
-
-        final AnAction anAct = _createAnAction(jb.getAction(), jb, false);
-        if (anAct == null)
-          continue;
-
-        final int index = jbuttons.indexOf(jb);
-        final TBItemAnActionButton butt = new TBItemAnActionButton("dialog_buttons_group_item_" + index, anAct, false, TBItemAnActionButton.SHOWMODE_TEXT_ONLY, ms);
-        butt.setComponent(jb);
-
-        final boolean isDefault = jb.getAction().getValue(DialogWrapper.DEFAULT_ACTION) != null;
-        if (isDefault) {
-          def = butt;
-          def.myFlags |= NSTLibrary.BUTTON_FLAG_COLORED;
-          continue;
-        }
-        groupButtons.add(butt);
-      }
-
-      if (def != null)
-        groupButtons.add(def);
-
-      final TBItemGroup gr = result.addGroup(groupButtons);
-      result.setPrincipal(gr);
-
-      return result;
-    }
-  }
-
-  private static AnAction _createAnAction(@NotNull Action action, JButton fromButton, boolean useTextFromAction /*for optional buttons*/) {
-    final Object anAct = action.getValue(OptionAction.AN_ACTION);
-    if (anAct == null) {
-      // LOG.warn("null AnAction in action: '" + action + "', use wrapper");
-      return new DumbAwareAction() {
-        {
-          setEnabledInModalContext(true);
-          if (useTextFromAction) {
-            final Object name = action.getValue(Action.NAME);
-            getTemplatePresentation().setText(name != null && name instanceof String ? (String)name : "");
-          }
-        }
-        @Override
-        public void actionPerformed(AnActionEvent e) {
-          // also can be used something like: ApplicationManager.getApplication().invokeLater(() -> jb.doClick(), ms)
-          action.actionPerformed(new ActionEvent(fromButton, ActionEvent.ACTION_PERFORMED, null));
-        }
-        @Override
-        public void update(AnActionEvent e) {
-          e.getPresentation().setEnabled(action.isEnabled());
-          if (!useTextFromAction)
-            e.getPresentation().setText(DialogWrapper.extractMnemonic(fromButton.getText()).second);
-        }
-      };
-    }
-    if (!(anAct instanceof AnAction)) {
-      // LOG.warn("unknown type of awt.Action's property: " + anAct.getClass().toString());
+  public static Runnable showMessageDlgBar(@NotNull String[] buttons, @NotNull Runnable[] actions, String defaultButton) {
+    if (!isTouchBarAvailable())
       return null;
-    }
-    return (AnAction)anAct;
+
+    final TouchBar tb = BuildUtils.createMessageDlgBar(buttons, actions, defaultButton);
+    _showTempTouchBar(tb, BarType.DIALOG);
+    return ()->{ourStack.removeTouchBar(tb);};
   }
 
-  private static TouchBar _createScrubberBarFromPopup(@NotNull ListPopupImpl listPopup) {
-    try (NSAutoreleaseLock lock = new NSAutoreleaseLock()) {
-      final TouchBar result = new TouchBar("popup_scrubber_bar" + listPopup, false);
+  public static void showStopRunningBar(List<Pair<RunContentDescriptor, Runnable>> stoppableDescriptors) {
+    final TouchBar tb = BuildUtils.createStopRunningBar(stoppableDescriptors);
+    _showTempTouchBar(tb, BarType.DIALOG);
+  }
 
-      List<TBItemScrubber.ItemData> items = new ArrayList<>();
-      @NotNull ListPopupStep listPopupStep = listPopup.getListStep();
-      for (Object obj : listPopupStep.getValues()) {
-        final Icon ic = listPopupStep.getIconFor(obj);
-        String txt = listPopupStep.getTextFor(obj);
+  static void removeTouchBar(TouchBar tb) {
+    if (tb != null)
+      ourStack.removeTouchBar(tb);
+  }
 
-        if (listPopupStep.isMnemonicsNavigationEnabled()) {
-          final MnemonicNavigationFilter<Object> filter = listPopupStep.getMnemonicNavigationFilter();
-          final int pos = filter == null ? -1 : filter.getMnemonicPos(obj);
-          if (pos != -1)
-            txt = txt.substring(0, pos) + txt.substring(pos + 1);
-        }
+  static void showContainer(@NotNull BarContainer container) { ourStack.showContainer(container); }
 
-        final Runnable action = () -> {
-          listPopup.getList().setSelectedValue(obj, false);
-          listPopup.handleSelect(true);
-        };
-
-        items.add(new TBItemScrubber.ItemData(ic, txt, () -> ApplicationManager.getApplication().invokeLater(() -> action.run())));
-      }
-      final TBItemScrubber scrub = result.addScrubber();
-      scrub.setItems(items);
-
-      result.selectVisibleItemsToShow();
-      return result;
-    }
+  private static void _showTempTouchBar(TouchBar tb, BarType type) {
+    if (tb == null)
+      return;
+    BarContainer container = new BarContainer(type, tb, null);
+    ourStack.showContainer(container);
   }
 
   private static boolean _hasAnyActiveSession(Project proj, ProcessHandler handler/*already terminated*/) {
@@ -524,13 +310,11 @@ public class TouchBarsManager {
     return Arrays.stream(processes).anyMatch(h -> h != null && h != handler && (!h.isProcessTerminated() && !h.isProcessTerminating()));
   }
 
-  private static @NotNull ProjectData _getProjData(@NotNull Project project) {
+  private static void _updateCurrentTouchbar() {
     ApplicationManager.getApplication().assertIsDispatchThread();
-    ProjectData result = ourProjectData.get(project);
-    if (result == null) {
-      result = new ProjectData(project);
-      ourProjectData.put(project, result);
-    }
-    return result;
+
+    final TouchBar top = ourStack.getTopTouchBar();
+    if (top != null)
+      top.updateActionItems();
   }
 }

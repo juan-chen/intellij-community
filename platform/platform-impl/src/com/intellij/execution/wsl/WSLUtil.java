@@ -54,6 +54,7 @@ public class WSLUtil {
     new WSLDistribution.Description("OPENSUSE42", "openSUSE-42", "opensuse-42.exe", "openSUSE Leap 42"),
     new WSLDistribution.Description("SLES12", "SLES-12", "sles-12.exe", "SUSE Linux Enterprise Server 12"),
     new WSLDistribution.Description("UBUNTU", "Ubuntu", "ubuntu.exe", "Ubuntu"),
+    new WSLDistribution.Description("UBUNTU1604", "Ubuntu-16.04", "ubuntu1604.exe", "Ubuntu 16.04"),
     new WSLDistribution.Description("UBUNTU1804", "Ubuntu-18.04", "ubuntu1804.exe", "Ubuntu 18.04")
   );
 
@@ -70,7 +71,7 @@ public class WSLUtil {
    */
   @NotNull
   public static List<WSLDistribution> getAvailableDistributions() {
-    if (!SystemInfo.isWin10OrNewer) return Collections.emptyList();
+    if (!isSystemCompatible()) return Collections.emptyList();
 
     final Path executableRoot = getExecutableRootPath();
     if (executableRoot == null) return Collections.emptyList();
@@ -123,5 +124,9 @@ public class WSLUtil {
     processHandler.removeProcessListener(INPUT_CLOSE_LISTENER);
     processHandler.addProcessListener(INPUT_CLOSE_LISTENER);
     return processHandler;
+  }
+
+  public static boolean isSystemCompatible() {
+    return SystemInfo.isWin10OrNewer;
   }
 }

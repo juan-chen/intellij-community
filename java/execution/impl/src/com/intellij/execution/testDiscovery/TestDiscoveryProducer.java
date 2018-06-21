@@ -4,6 +4,9 @@ package com.intellij.execution.testDiscovery;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.ExtensionPointName;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Couple;
+import com.intellij.psi.PsiClass;
+import com.intellij.psi.PsiMethod;
 import com.intellij.util.containers.MultiMap;
 import gnu.trove.THashSet;
 import org.jetbrains.annotations.ApiStatus;
@@ -12,7 +15,6 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.Map;
-import java.util.function.BiConsumer;
 
 @ApiStatus.Experimental
 public interface TestDiscoveryProducer {
@@ -32,7 +34,7 @@ public interface TestDiscoveryProducer {
                                      @NotNull String classFQName,
                                      @NotNull String methodName,
                                      byte frameworkId,
-                                     @NotNull TestConsumer consumer) {
+                                     @NotNull TestProcessor processor) {
     MultiMap<String, String> visitedTests = new MultiMap<String, String>() {
       @NotNull
       @Override
@@ -42,32 +44,33 @@ public interface TestDiscoveryProducer {
     };
     for (TestDiscoveryProducer producer : EP.getExtensions()) {
       for (Map.Entry<String, Collection<String>> entry : producer.getDiscoveredTests(project, classFQName, methodName, frameworkId).entrySet()) {
-        String cName = entry.getKey();
-        for (String mRawName : entry.getValue()) {
-          if (!visitedTests.get(classFQName).contains(mRawName)) {
-            visitedTests.putValue(cName, mRawName);
-
-            String mName;
-            String parameter;
-
-            int idx = mRawName.indexOf('[');
-            if (idx == -1) {
-              mName = mRawName;
-              parameter = null;
-            } else {
-              mName = mRawName.substring(0, idx);
-              parameter = mRawName.substring(idx);
-            }
-
-            consumer.accept(cName, mName, parameter);
+        String className = entry.getKey();
+        for (String methodRawName : entry.getValue()) {
+          if (!visitedTests.get(classFQName).contains(methodRawName)) {
+            visitedTests.putValue(className, methodRawName);
+            Couple<String> couple = extractParameter(methodRawName);
+            if (!processor.process(className, couple.first, couple.second)) return;
           }
         }
       }
     }
   }
 
+  @NotNull
+  static Couple<String> extractParameter(@NotNull String rawName) {
+    int idx = rawName.indexOf('[');
+    return idx == -1 ?
+           Couple.of(rawName, null) :
+           Couple.of(rawName.substring(0, idx), rawName.substring(idx));
+  }
+
   @FunctionalInterface
-  interface TestConsumer {
-    boolean accept(@NotNull String className, @NotNull String methodName, @Nullable String parameter);
+  interface TestProcessor {
+    boolean process(@NotNull String className, @NotNull String methodName, @Nullable String parameter);
+  }
+
+  @FunctionalInterface
+  interface PsiTestProcessor {
+    boolean process(@NotNull PsiClass clazz, @NotNull PsiMethod method, @Nullable String parameter);
   }
 }

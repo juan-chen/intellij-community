@@ -81,6 +81,7 @@ public interface GroovyElementTypes {
   GroovyElementType CONTINUE_STATEMENT = new GroovyElementType("CONTINUE_STATEMENT");
   GroovyElementType DISJUNCTION_TYPE_ELEMENT = new GroovyElementType("DISJUNCTION_TYPE_ELEMENT");
   GroovyElementType DOLLAR_SLASHY_LITERAL = new GroovyElementType("DOLLAR_SLASHY_LITERAL");
+  GroovyElementType DO_WHILE_STATEMENT = new GroovyElementType("DO_WHILE_STATEMENT");
   GroovyElementType ELVIS_EXPRESSION = new GroovyElementType("ELVIS_EXPRESSION");
   GrEnumDefinitionBodyElementType ENUM_BODY = new GrEnumDefinitionBodyElementType("ENUM_BODY");
   GrEnumConstantElementType ENUM_CONSTANT = new GrEnumConstantElementType("ENUM_CONSTANT");
@@ -111,6 +112,7 @@ public interface GroovyElementTypes {
   GroovyElementType LOR_EXPRESSION = new GroovyElementType("LOR_EXPRESSION");
   GrMethodElementType METHOD = new GrMethodElementType("METHOD");
   GroovyElementType METHOD_CALL_EXPRESSION = new GroovyElementType("METHOD_CALL_EXPRESSION");
+  GroovyElementType METHOD_REFERENCE_EXPRESSION = new GroovyElementType("METHOD_REFERENCE_EXPRESSION");
   GrModifierListElementType MODIFIER_LIST = new GrModifierListElementType("MODIFIER_LIST");
   GroovyElementType MULTIPLICATIVE_EXPRESSION = new GroovyElementType("MULTIPLICATIVE_EXPRESSION");
   GroovyElementType NAMED_ARGUMENT = new GroovyElementType("NAMED_ARGUMENT");
@@ -144,6 +146,7 @@ public interface GroovyElementTypes {
   GroovyElementType THROW_STATEMENT = new GroovyElementType("THROW_STATEMENT");
   GroovyElementType TRADITIONAL_FOR_CLAUSE = new GroovyElementType("TRADITIONAL_FOR_CLAUSE");
   GrTraitElementType TRAIT_TYPE_DEFINITION = new GrTraitElementType("TRAIT_TYPE_DEFINITION");
+  GroovyElementType TRY_RESOURCE_LIST = new GroovyElementType("TRY_RESOURCE_LIST");
   GroovyElementType TRY_STATEMENT = new GroovyElementType("TRY_STATEMENT");
   GroovyElementType TUPLE = new GroovyElementType("TUPLE");
   GroovyElementType TUPLE_ASSIGNMENT_EXPRESSION = new GroovyElementType("TUPLE_ASSIGNMENT_EXPRESSION");
@@ -269,6 +272,7 @@ public interface GroovyElementTypes {
   IElementType T_LSH_ASSIGN = new GroovyElementType("<<=");
   IElementType T_LT = new GroovyElementType("<");
   IElementType T_METHOD_CLOSURE = new GroovyElementType(".&");
+  IElementType T_METHOD_REFERENCE = new GroovyElementType("::");
   IElementType T_MINUS = new GroovyElementType("-");
   IElementType T_MINUS_ASSIGN = new GroovyElementType("-=");
   IElementType T_NEQ = new GroovyElementType("!=");

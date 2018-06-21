@@ -68,6 +68,7 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
   private final AtomicBoolean myShutDown = new AtomicBoolean(false);
   private final AtomicInteger myStructureModificationCount = new AtomicInteger();
   private final BulkFileListener myPublisher;
+  private final VfsData myVfsData = new VfsData();
 
   public PersistentFSImpl(@NotNull MessageBus bus) {
     ShutDownTracker.getInstance().registerShutdownTask(this::performShutdown);
@@ -994,7 +995,7 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
 
     int rootId = FSRecords.findRootRecord(rootUrl);
 
-    VfsData.Segment segment = VfsData.getInstance().getSegment(rootId, true);
+    VfsData.Segment segment = myVfsData.getSegment(rootId, true);
     VfsData.DirectoryData directoryData = new VfsData.DirectoryData();
     VirtualFileSystemEntry newRoot = new FsRoot(rootId, segment, directoryData, fs, rootName, StringUtil.trimTrailing(rootPath, '/'));
 
@@ -1062,7 +1063,7 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
 
   @Override
   public NewVirtualFile findFileByIdIfCached(final int id) {
-    return VfsData.getInstance().hasLoadedFile(id) ? findFileById(id) : null;
+    return myVfsData.hasLoadedFile(id) ? findFileById(id) : null;
   }
 
   @Override
@@ -1314,6 +1315,11 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
   }
 
   @TestOnly
+  public void cleanPersistedContent(int id) {
+    doCleanPersistedContent(id);
+  }
+
+  @TestOnly
   public void cleanPersistedContents() {
     int[] roots = FSRecords.listRoots();
     for (int root : roots) {
@@ -1328,10 +1334,13 @@ public class PersistentFSImpl extends PersistentFS implements ApplicationCompone
       }
     }
     else {
-      setFlag(id, MUST_RELOAD_CONTENT, true);
+      doCleanPersistedContent(id);
     }
   }
 
+  private static void doCleanPersistedContent(int id) {
+    setFlag(id, MUST_RELOAD_CONTENT, true);
+  }
 
   private static class FsRoot extends VirtualDirectoryImpl {
     private final String myName;

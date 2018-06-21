@@ -381,4 +381,95 @@ class GoodCodeRed {
 }
 '''
   }
+
+  void 'test recursive generics'() {
+    testHighlighting '''
+import groovy.transform.CompileStatic
+
+@CompileStatic
+class C {
+  public abstract class B<ParentType, T extends ParentType, Self extends B<ParentType, T, Self>>{
+    public Self withParent(final Class<? extends ParentType> type) {
+      return null;
+    }
+  }
+
+  interface I<IP>{}
+  public class A<T extends Number> extends  B<Number,T,A<T>> implements I<T>  {
+
+  }
+
+  public static <E> E or3(final I<? extends E>... patterns) { return null}
+
+  def m3() {
+    or3(new A<Double>().withParent(Integer)).byteValue()
+  }
+
+}
+'''
+  }
+
+  void 'test constructor with generic parameter'() {
+    testHighlighting '''
+import groovy.transform.CompileStatic
+
+@CompileStatic
+class Cl {
+    
+    Cl(Condition<Cl> con) {
+
+    }
+    
+    interface Condition<T> {}
+
+    static <T> Condition<T> alwaysFalse() {
+      return (Condition<T>)null
+    }
+
+    
+    static m() {
+      new Cl(alwaysFalse())
+    }
+
+  }
+'''
+  }
+
+  void 'test call without reference'() {
+    testHighlighting '''
+class E {
+    E call() {
+        null
+    }
+    E bar() {null}
+
+}
+
+new E().bar()()
+
+'''
+  }
+
+//TODO: IDEA-194192
+  void '_test call without reference with generics'() {
+    testHighlighting '''
+import groovy.transform.CompileStatic
+
+class E {
+    def <K,V> Map<K, V> call(Map<K, V> m) {
+        m
+    }
+    E bar() {null}
+}
+
+static <K,V> Map<K, V> getMap() {
+  return new HashMap<K,V>()
+}
+
+@CompileStatic
+def com() {
+    Map<String, Integer> correct = new E()(getMap().withDefault({ 0 }))
+}
+'''
+  }
 }

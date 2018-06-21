@@ -32,6 +32,7 @@ import com.intellij.navigation.AnonymousElementProvider;
 import com.intellij.navigation.ChooseByNameRegistry;
 import com.intellij.navigation.NavigationItem;
 import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.application.Experiments;
 import com.intellij.openapi.extensions.Extensions;
 import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
@@ -41,7 +42,6 @@ import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.playback.commands.ActionCommand;
 import com.intellij.openapi.util.Disposer;
-import com.intellij.openapi.util.registry.Registry;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.pom.Navigatable;
@@ -61,7 +61,7 @@ import java.util.List;
 public class GotoClassAction extends GotoActionBase implements DumbAware {
   @Override
   public void actionPerformed(@NotNull AnActionEvent e) {
-    if (Registry.is("new.search.everywhere")) {
+    if (Experiments.isFeatureEnabled("new.search.everywhere")) {
       showInSearchEverywherePopup(ClassSearchEverywhereContributor.class.getSimpleName(), e);
       return;
     }
@@ -139,7 +139,7 @@ public class GotoClassAction extends GotoActionBase implements DumbAware {
   }
 
   @Nullable
-  private static Navigatable findMember(String memberPattern, String fullPattern, PsiElement psiElement, VirtualFile file) {
+  public static Navigatable findMember(String memberPattern, String fullPattern, PsiElement psiElement, VirtualFile file) {
     final PsiStructureViewFactory factory = LanguageStructureViewBuilder.INSTANCE.forLanguage(psiElement.getLanguage());
     final StructureViewBuilder builder = factory == null ? null : factory.getStructureViewBuilder(psiElement.getContainingFile());
     final FileEditor[] editors = FileEditorManager.getInstance(psiElement.getProject()).getEditors(file);
@@ -205,30 +205,35 @@ public class GotoClassAction extends GotoActionBase implements DumbAware {
   private static PsiElement getElement(@NotNull PsiElement element, ChooseByNamePopup popup) {
     final String path = popup.getPathToAnonymous();
     if (path != null) {
-      final String[] classes = path.split("\\$");
-      List<Integer> indexes = new ArrayList<>();
-      for (String cls : classes) {
-        if (cls.isEmpty()) continue;
-        try {
-          indexes.add(Integer.parseInt(cls) - 1);
-        }
-        catch (Exception e) {
-          return element;
-        }
-      }
-      PsiElement current = element;
-      for (int index : indexes) {
-        final PsiElement[] anonymousClasses = getAnonymousClasses(current);
-        if (index >= 0 && index < anonymousClasses.length) {
-          current = anonymousClasses[index];
-        }
-        else {
-          return current;
-        }
-      }
-      return current;
+      return getElement(element, path);
     }
     return element;
+  }
+
+  @NotNull
+  public static PsiElement getElement(@NotNull PsiElement element, @NotNull String path) {
+    final String[] classes = path.split("\\$");
+    List<Integer> indexes = new ArrayList<>();
+    for (String cls : classes) {
+      if (cls.isEmpty()) continue;
+      try {
+        indexes.add(Integer.parseInt(cls) - 1);
+      }
+      catch (Exception e) {
+        return element;
+      }
+    }
+    PsiElement current = element;
+    for (int index : indexes) {
+      final PsiElement[] anonymousClasses = getAnonymousClasses(current);
+      if (index >= 0 && index < anonymousClasses.length) {
+        current = anonymousClasses[index];
+      }
+      else {
+        return current;
+      }
+    }
+    return current;
   }
 
   @NotNull

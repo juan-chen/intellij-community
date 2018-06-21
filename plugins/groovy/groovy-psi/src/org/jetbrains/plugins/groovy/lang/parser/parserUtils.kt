@@ -10,6 +10,8 @@ import com.intellij.lang.PsiBuilder.Marker
 import com.intellij.lang.PsiBuilderUtil.parseBlockLazy
 import com.intellij.lang.parser.GeneratedParserUtilBase.*
 import com.intellij.openapi.util.Key
+import com.intellij.openapi.util.KeyWithDefaultValue
+import com.intellij.openapi.util.text.StringUtil.contains
 import com.intellij.psi.tree.IElementType
 import com.intellij.psi.tree.TokenSet
 import org.jetbrains.plugins.groovy.GroovyBundle
@@ -19,6 +21,7 @@ import org.jetbrains.plugins.groovy.lang.psi.GroovyTokenSets.EQUALITY_OPERATORS
 import org.jetbrains.plugins.groovy.util.get
 import org.jetbrains.plugins.groovy.util.set
 import org.jetbrains.plugins.groovy.util.withKey
+import java.util.*
 
 private val PsiBuilder.groovyParser: GroovyParser get() = (this as Builder).parser as GroovyParser
 
@@ -44,12 +47,12 @@ fun extendedStatement(builder: PsiBuilder, level: Int): Boolean = builder.groovy
 
 fun extendedSeparator(builder: PsiBuilder, level: Int): Boolean = builder.advanceIf { builder.groovyParser.isExtendedSeparator(tokenType) }
 
-private val currentClassName: Key<String> = Key.create("groovy.parse.class.name")
+private val currentClassNames: Key<Deque<String>> = KeyWithDefaultValue.create("groovy.parse.class.name") { LinkedList<String>() }
 private val parseDiamonds: Key<Boolean> = Key.create("groovy.parse.diamonds")
 private val parseArguments: Key<Boolean> = Key.create("groovy.parse.arguments")
 private val parseApplicationArguments: Key<Boolean> = Key.create("groovy.parse.application.arguments")
-private val parseNoTypeArgumentsCodeReference: Key<Boolean> = Key.create("groovy.parse.no.type.arguments")
 private val parseAnyTypeElement: Key<Boolean> = Key.create("groovy.parse.any.type.element")
+private val parseQualifiedName: Key<Boolean> = Key.create("groovy.parse.qualified.name")
 private val parseCapitalizedCodeReference: Key<Boolean> = Key.create("groovy.parse.capitalized")
 private val parseDefinitelyTypeElement: Key<Boolean> = Key.create("groovy.parse.definitely.type.element")
 private val referenceWasCapitalized: Key<Boolean> = Key.create("groovy.parse.ref.was.capitalized")
@@ -59,8 +62,8 @@ private val referenceWasQualified: Key<Boolean> = Key.create("groovy.parse.ref.w
 
 @Suppress("LiftReturnOrAssignment")
 fun classIdentifier(builder: PsiBuilder, level: Int): Boolean {
-  if (builder.tokenType == IDENTIFIER) {
-    builder[currentClassName] = builder.tokenText
+  if (builder.tokenType === IDENTIFIER) {
+    builder[currentClassNames]!!.push(builder.tokenText)
     builder.advanceLexer()
     return true
   }
@@ -69,13 +72,15 @@ fun classIdentifier(builder: PsiBuilder, level: Int): Boolean {
   }
 }
 
-fun resetClassIdentifier(builder: PsiBuilder, level: Int): Boolean {
-  builder[currentClassName] = null
+fun popClassIdentifier(builder: PsiBuilder, level: Int): Boolean {
+  builder[currentClassNames]!!.pop()
   return true
 }
 
 fun constructorIdentifier(builder: PsiBuilder, level: Int): Boolean {
-  return builder.advanceIf { tokenType == IDENTIFIER && tokenText == this[currentClassName] }
+  return builder.advanceIf {
+    tokenType === IDENTIFIER && tokenText == this[currentClassNames]!!.peek()
+  }
 }
 
 fun allowDiamond(builder: PsiBuilder, level: Int, parser: Parser): Boolean {
@@ -86,14 +91,6 @@ fun allowDiamond(builder: PsiBuilder, level: Int, parser: Parser): Boolean {
 
 fun isDiamondAllowed(builder: PsiBuilder, level: Int): Boolean = builder[parseDiamonds]
 
-fun noTypeArgsReference(builder: PsiBuilder, level: Int, codeReferenceParser: Parser): Boolean {
-  return builder.withKey(parseNoTypeArgumentsCodeReference, true) {
-    codeReferenceParser.parse(builder, level)
-  }
-}
-
-private val PsiBuilder.noTypeArgsReferenceParsing get() = this[parseNoTypeArgumentsCodeReference]
-
 fun anyTypeElement(builder: PsiBuilder, level: Int, typeElement: Parser): Boolean {
   return builder.withKey(parseAnyTypeElement, true) {
     typeElement.parse(builder, level + 1)
@@ -101,6 +98,14 @@ fun anyTypeElement(builder: PsiBuilder, level: Int, typeElement: Parser): Boolea
 }
 
 private val PsiBuilder.anyTypeElementParsing get() = this[parseAnyTypeElement]
+
+fun qualifiedName(builder: PsiBuilder, level: Int, parser: Parser): Boolean {
+  return builder.withKey(parseQualifiedName, true) {
+    parser.parse(builder, level)
+  }
+}
+
+fun isQualifiedName(builder: PsiBuilder, level: Int): Boolean = builder[parseQualifiedName]
 
 fun capitalizedTypeElement(builder: PsiBuilder, level: Int, typeElement: Parser, check: Parser): Boolean {
   try {
@@ -179,10 +184,6 @@ fun setRefHadTypeArguments(builder: PsiBuilder, level: Int): Boolean {
   return true
 }
 
-fun codeReferenceTypeArguments(builder: PsiBuilder, level: Int, typeArgumentsParser: Parser): Boolean {
-  return !builder.noTypeArgsReferenceParsing && typeArgumentsParser.parse(builder, level)
-}
-
 fun parseArgument(builder: PsiBuilder, level: Int, argumentParser: Parser): Boolean {
   return builder.withKey(parseArguments, true) {
     argumentParser.parse(builder, level)
@@ -206,7 +207,7 @@ fun notApplicationArguments(builder: PsiBuilder, level: Int, parser: Parser): Bo
 fun isApplicationArguments(builder: PsiBuilder, level: Int): Boolean = builder[parseApplicationArguments]
 
 fun closureArgumentSeparator(builder: PsiBuilder, level: Int, closureArguments: Parser): Boolean {
-  if (builder.tokenType == NL) {
+  if (builder.tokenType === NL) {
     if (isApplicationArguments(builder, level)) {
       return false
     }
@@ -393,3 +394,12 @@ fun withProtectedLastVariantPos(builder: PsiBuilder, level: Int, parser: Parser)
 }
 
 private val PsiBuilder.state: ErrorState get() = ErrorState.get(this)
+
+fun newLine(builder: PsiBuilder, level: Int): Boolean {
+  builder.eof() // force skip whitespaces
+  val prevStart = builder.rawTokenTypeStart(-1)
+  val currentStart = builder.rawTokenTypeStart(0)
+  return contains(builder.originalText, prevStart, currentStart, '\n')
+}
+
+fun noNewLine(builder: PsiBuilder, level: Int): Boolean = !newLine(builder, level)

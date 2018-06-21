@@ -52,7 +52,7 @@ public class YAMLParser implements PsiParser, YAMLTokenTypes {
     if (myBuilder.getTokenType() == DOCUMENT_MARKER) {
       advanceLexer();
     }
-    parseBlockNode(0, false);
+    parseBlockNode(myIndent, false);
     dropEolMarker();
     marker.done(YAMLElementTypes.DOCUMENT);
   }
@@ -386,6 +386,9 @@ public class YAMLParser implements PsiParser, YAMLTokenTypes {
     eolSeen = false;
 
     int indentAddition = getShorthandIndentAddition();
+    advanceLexer();
+
+    assert getTokenType() == COLON : "Expected colon";
     advanceLexer();
 
     final PsiBuilder.Marker rollbackMarker = mark();

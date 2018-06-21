@@ -309,7 +309,7 @@ public abstract class DebugProcessImpl extends UserDataHolderBase implements Deb
         ((ListeningConnector)findConnector(SOCKET_LISTENING_CONNECTOR_NAME)).stopListening(arguments);
       }
     }
-    catch (IOException | IllegalConnectorArgumentsException e) {
+    catch (IOException | IllegalConnectorArgumentsException | IllegalArgumentException e) {
       LOG.debug(e);
     }
     catch (ExecutionException e) {
@@ -405,6 +405,9 @@ public abstract class DebugProcessImpl extends UserDataHolderBase implements Deb
           requestManager.deleteEventRequest(request);
         }
         catch (ObjectCollectedException ignored) {
+        }
+        catch (VMDisconnectedException e) {
+          throw e;
         }
         catch (Exception e) {
           LOG.error(e); // report all for now

@@ -3,10 +3,12 @@ package com.jetbrains.jsonSchema.widget;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.json.JsonLanguage;
+import com.intellij.lang.Language;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.LanguageFileType;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.popup.ListPopup;
 import com.intellij.openapi.util.text.StringUtil;
@@ -16,22 +18,23 @@ import com.intellij.openapi.vfs.impl.http.HttpVirtualFile;
 import com.intellij.openapi.vfs.impl.http.RemoteFileInfo;
 import com.intellij.openapi.wm.StatusBarWidget;
 import com.intellij.openapi.wm.impl.status.EditorBasedStatusBarPopup;
-import com.jetbrains.jsonSchema.extension.JsonSchemaFileProvider;
-import com.jetbrains.jsonSchema.extension.JsonSchemaInfo;
-import com.jetbrains.jsonSchema.extension.SchemaType;
+import com.jetbrains.jsonSchema.extension.*;
 import com.jetbrains.jsonSchema.ide.JsonSchemaService;
 import com.jetbrains.jsonSchema.impl.JsonSchemaConflictNotificationProvider;
 import com.jetbrains.jsonSchema.impl.JsonSchemaServiceImpl;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 
 class JsonSchemaStatusWidget extends EditorBasedStatusBarPopup {
   private static final String JSON_SCHEMA_BAR = "JSON: ";
+  private static final String JSON_SCHEMA_BAR_OTHER_FILES = "Schema: ";
   private static final String JSON_SCHEMA_TOOLTIP = "JSON Schema: ";
+  private static final String JSON_SCHEMA_TOOLTIP_OTHER_FILES = "Validated by JSON Schema: ";
   private final JsonSchemaService myService;
   private static final String ID = "JSONSchemaSelector";
 
@@ -60,14 +63,32 @@ class JsonSchemaStatusWidget extends EditorBasedStatusBarPopup {
     }
   }
 
+  private boolean hasAccessToSymbols() {
+    return !DumbService.getInstance(myProject).isDumb();
+  }
+
   @NotNull
   @Override
   protected WidgetState getWidgetState(@Nullable VirtualFile file) {
     if (file == null) {
       return WidgetState.HIDDEN;
     }
+
+    JsonSchemaEnabler[] enablers = JsonSchemaEnabler.EXTENSION_POINT_NAME.getExtensions();
+    if (Arrays.stream(enablers).noneMatch(e -> e.isEnabledForFile(file) && e.shouldShowSwitcherWidget(file))) {
+      return WidgetState.HIDDEN;
+    }
+
     FileType fileType = file.getFileType();
-    if (!(fileType instanceof LanguageFileType) || !(((LanguageFileType)fileType).getLanguage() instanceof JsonLanguage)) {
+    Language language = fileType instanceof LanguageFileType ? ((LanguageFileType)fileType).getLanguage() : null;
+    boolean isJsonFile = language instanceof JsonLanguage;
+
+    if (!hasAccessToSymbols()) {
+      return WidgetState.getDumbModeState("JSON schema service", isJsonFile ? JSON_SCHEMA_BAR : JSON_SCHEMA_BAR_OTHER_FILES);
+    }
+
+    JsonWidgetSuppressor[] suppressors = JsonWidgetSuppressor.EXTENSION_POINT_NAME.getExtensions();
+    if (Arrays.stream(suppressors).anyMatch(s -> s.suppressSwitcherWidget(file, myProject))) {
       return WidgetState.HIDDEN;
     }
 
@@ -134,21 +155,24 @@ class JsonSchemaStatusWidget extends EditorBasedStatusBarPopup {
       return state;
     }
 
+    String tooltip = isJsonFile ? JSON_SCHEMA_TOOLTIP : JSON_SCHEMA_TOOLTIP_OTHER_FILES;
+    String bar = isJsonFile ? JSON_SCHEMA_BAR : JSON_SCHEMA_BAR_OTHER_FILES;
+
     JsonSchemaFileProvider provider = myService.getSchemaProvider(schemaFile);
     if (provider != null) {
       String providerName = provider.getPresentableName();
       String shortName = StringUtil.trimEnd(StringUtil.trimEnd(providerName, ".json"), "-schema");
-      String name = shortName.startsWith("JSON schema") ? shortName : (JSON_SCHEMA_BAR + shortName);
+      String name = shortName.startsWith("JSON schema") ? shortName : (bar + shortName);
       String kind = provider.getSchemaType() == SchemaType.embeddedSchema || provider.getSchemaType() == SchemaType.schema ? " (bundled)" : "";
-      return new MyWidgetState(JSON_SCHEMA_TOOLTIP + providerName + kind, name, true);
+      return new MyWidgetState(tooltip + providerName + kind, name, true);
     }
 
-    return new MyWidgetState(JSON_SCHEMA_TOOLTIP + getSchemaFileDesc(schemaFile), JSON_SCHEMA_BAR + getPresentableNameForFile(schemaFile),
+    return new MyWidgetState(tooltip + getSchemaFileDesc(schemaFile), bar + getPresentableNameForFile(schemaFile),
                              true);
   }
 
   private boolean isValidSchemaFile(VirtualFile schemaFile) {
-    if (schemaFile == null || !myService.isSchemaFile(schemaFile)) return false;
+    if (schemaFile == null || !myService.isApplicableToFile(schemaFile) || !myService.isSchemaFile(schemaFile)) return false;
     FileType type = schemaFile.getFileType();
     return type instanceof LanguageFileType && ((LanguageFileType)type).getLanguage() instanceof JsonLanguage;
   }
@@ -234,6 +258,24 @@ class JsonSchemaStatusWidget extends EditorBasedStatusBarPopup {
 
   @Override
   protected void registerCustomListeners() {
+    class Listener implements DumbService.DumbModeListener {
+      volatile boolean isDumbMode;
+
+      @Override
+      public void enteredDumbMode() {
+        isDumbMode = true;
+        update();
+      }
+
+      @Override
+      public void exitDumbMode() {
+        isDumbMode = false;
+        update();
+      }
+    }
+
+    Listener listener = new Listener();
+    myConnection.subscribe(DumbService.DUMB_MODE, listener);
   }
 
   @NotNull

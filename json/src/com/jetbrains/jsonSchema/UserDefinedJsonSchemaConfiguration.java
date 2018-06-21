@@ -35,6 +35,7 @@ import com.jetbrains.jsonSchema.impl.JsonSchemaVersion;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.File;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -154,8 +155,9 @@ public class UserDefinedJsonSchemaConfiguration {
         case Directory:
           result.add((project, vfile) -> {
             final VirtualFile relativeFile = getRelativeFile(project, patternText);
-            return relativeFile != null && VfsUtilCore.isAncestor(relativeFile, vfile, true)
-                   && !JsonSchemaService.Impl.get(project).isSchemaFile(vfile);
+            if (relativeFile == null || !VfsUtilCore.isAncestor(relativeFile, vfile, true)) return false;
+            JsonSchemaService service = JsonSchemaService.Impl.get(project);
+            return service.isApplicableToFile(vfile) && !service.isSchemaFile(vfile);
           });
           break;
       }
@@ -239,7 +241,7 @@ public class UserDefinedJsonSchemaConfiguration {
 
     @NotNull
     private static String normalizePath(String path) {
-      return path.replace('\\', '/');
+      return StringUtil.trimEnd(path.replace('\\', '/').replace('/', File.separatorChar), File.separatorChar);
     }
 
     public String getPath() {
@@ -248,6 +250,19 @@ public class UserDefinedJsonSchemaConfiguration {
 
     public void setPath(String path) {
       this.path = normalizePath(path);
+    }
+
+    public String getError() {
+      switch (mappingKind) {
+        case File:
+          return !StringUtil.isEmpty(path) ? null : "Empty file path doesn't match anything";
+        case Pattern:
+          return !StringUtil.isEmpty(path) ? null : "Empty pattern matches everything";
+        case Directory:
+          return null;
+      }
+
+      return "Unknown mapping kind";
     }
 
     public boolean isPattern() {
@@ -267,6 +282,9 @@ public class UserDefinedJsonSchemaConfiguration {
     }
 
     public String getPresentation() {
+      if (mappingKind == JsonMappingKind.Directory && StringUtil.isEmpty(path)) {
+        return mappingKind.getPrefix() + "[Project Directory]";
+      }
       return mappingKind.getPrefix() + path;
     }
 

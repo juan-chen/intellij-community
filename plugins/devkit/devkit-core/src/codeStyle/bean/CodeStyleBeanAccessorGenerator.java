@@ -19,6 +19,7 @@ public class CodeStyleBeanAccessorGenerator {
     STRING,
     WRAP,
     BRACE_STYLE,
+    FORCE_BRACES,
     ENUM,
     OTHER
   }
@@ -47,6 +48,9 @@ public class CodeStyleBeanAccessorGenerator {
     addMapping("LBRACE", "LeftBrace");
     addMapping("INSTANCEOF", "InstanceOf");
     addMapping("DOWHILE", "DoWhile");
+    addMapping("INDENT_SIZE", "Indent");
+    addMapping("CONTINUATION_INDENT_SIZE", "ContinuationIndent");
+    addMapping("PARM", "Param");
   }
 
   public CodeStyleBeanAccessorGenerator(@NotNull Field field) {
@@ -71,8 +75,11 @@ public class CodeStyleBeanAccessorGenerator {
         if (myFieldName.endsWith("_WRAP")) {
           return ValueType.WRAP;
         }
-        else if (myFieldName.endsWith("_BRACE_STYLE")) {
+        else if (myFieldName.endsWith("BRACE_STYLE")) {
           return ValueType.BRACE_STYLE;
+        }
+        else if (myFieldName.endsWith("_BRACE_FORCE")) {
+          return ValueType.FORCE_BRACES;
         }
         return ValueType.INT;
       }
@@ -131,6 +138,9 @@ public class CodeStyleBeanAccessorGenerator {
       case BRACE_STYLE:
         myImports.add("com.intellij.formatting.BraceStyle");
         return "BraceStyle";
+      case FORCE_BRACES:
+        myImports.add("com.intellij.formatting.ForceBraces");
+        return "ForceBraces";
       case INT:
       case BOOLEAN:
         return fieldType.getSimpleName();
@@ -149,9 +159,12 @@ public class CodeStyleBeanAccessorGenerator {
            myField.getAnnotation(Deprecated.class) == null;
   }
 
-  String getContainerClassAccessor() {
+  String getContainerClassAccessor(boolean isWriteAccess) {
     if (myContainerClass == CommonCodeStyleSettings.class) {
       return "getCommonSettings()";
+    }
+    else if (myContainerClass == CommonCodeStyleSettings.IndentOptions.class) {
+      return "getIndentOptions(" + isWriteAccess + ")";
     }
     myImports.add(myContainerClass.getName());
     return "getCustomSettings(" + myContainerClass.getSimpleName() + ".class)";
@@ -170,21 +183,21 @@ public class CodeStyleBeanAccessorGenerator {
       if (valueType == ValueType.WRAP) {
         output
           .append("return intToWrapType(")
-          .append(getContainerClassAccessor())
+          .append(getContainerClassAccessor(false))
           .append(".").append(myFieldName)
           .append(");\n");
       }
-      else if (valueType == ValueType.BRACE_STYLE) {
+      else if (valueType == ValueType.BRACE_STYLE || valueType == ValueType.FORCE_BRACES) {
         output
-          .append("return BraceStyle.fromInt(")
-          .append(getContainerClassAccessor())
+          .append("return ").append(typeString).append(".fromInt(")
+          .append(getContainerClassAccessor(false))
           .append(".").append(myFieldName)
           .append(");\n");
       }
       else {
         output
           .append("return ")
-          .append((getContainerClassAccessor()))
+          .append((getContainerClassAccessor(false)))
           .append(".").append(myFieldName).append(";\n");
       }
       output
@@ -207,14 +220,14 @@ public class CodeStyleBeanAccessorGenerator {
         .append(typeString).append(" value")
         .append("){");
       output
-        .append(getContainerClassAccessor())
+        .append(getContainerClassAccessor(true))
         .append(".").append(myFieldName).append("= ");
       final ValueType valueType = getValueType();
       if (valueType == ValueType.WRAP) {
         output.append("wrapTypeToInt(");
       }
       output.append("value");
-      if (valueType == ValueType.BRACE_STYLE) {
+      if (valueType == ValueType.BRACE_STYLE || valueType == ValueType.FORCE_BRACES) {
         output.append(".intValue()");
       }
       if (valueType == ValueType.WRAP) {

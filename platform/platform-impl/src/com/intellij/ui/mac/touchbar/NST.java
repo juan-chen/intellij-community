@@ -22,7 +22,7 @@ import java.util.Map;
 public class NST {
   private static final Logger LOG = Logger.getInstance(NST.class);
   private static final String ourRegistryKeyTouchbar = "ide.mac.touchbar.use";
-  private static final NSTLibrary ourNSTLibrary; // NOTE: JNA is stateless (doesn't have any limitations of multi-threaded use)
+  private static NSTLibrary ourNSTLibrary = null; // NOTE: JNA is stateless (doesn't have any limitations of multi-threaded use)
 
   private static String MIN_OS_VERSION = "10.12.2";
   static boolean isSupportedOS() { return SystemInfo.isMac && SystemInfo.isOsVersionAtLeast(MIN_OS_VERSION); }
@@ -31,31 +31,32 @@ public class NST {
     final Application app = ApplicationManager.getApplication();
     final boolean isUIPresented = app != null && !app.isHeadlessEnvironment() && !app.isUnitTestMode() && !app.isCommandLine();
     final boolean isRegistryKeyEnabled = Registry.is(ourRegistryKeyTouchbar, false);
-    NSTLibrary lib = null;
     if (
       isUIPresented
       && isSupportedOS()
       && isRegistryKeyEnabled
-      && SystemSettingsWrapper.isTouchBarServerRunning()
+      && Utils.isTouchBarServerRunning()
     ) {
       try {
-        lib = loadLibrary();
+        loadLibrary();
       } catch (Throwable e) {
         LOG.error("Failed to load nst library for touchbar: ", e);
       }
 
-      if (lib != null) {
+      if (ourNSTLibrary != null) {
         // small check that loaded library works
         try {
-          final ID test = lib.createTouchBar("test", (uid) -> { return ID.NIL; }, null);
+          final ID test = ourNSTLibrary.createTouchBar("test", (uid) -> { return ID.NIL; }, null);
           if (test == null || test == ID.NIL) {
             LOG.error("Failed to create native touchbar object, result is null");
+            ourNSTLibrary = null;
           } else {
-            lib.releaseTouchBar(test);
+            ourNSTLibrary.releaseTouchBar(test);
             LOG.info("nst library works properly, successfully created and released native touchbar object");
           }
         } catch (Throwable e) {
           LOG.error("nst library was loaded, but can't be used: ", e);
+          ourNSTLibrary = null;
         }
       } else {
         LOG.error("nst library wasn't loaded");
@@ -68,8 +69,6 @@ public class NST {
       LOG.info("registry key '" + ourRegistryKeyTouchbar + "' is disabled, skip nst loading");
     else
       LOG.info("touchbar-server isn't running, skip nst loading");
-
-    ourNSTLibrary = lib;
   }
 
   static NSTLibrary loadLibrary() {
@@ -81,14 +80,13 @@ public class NST {
     System.setProperty("jna.encoding", "UTF8");
 
     final Map<String, Object> nstOptions = new HashMap<>();
-    return Native.loadLibrary("nst", NSTLibrary.class, nstOptions);
+    return ourNSTLibrary = Native.loadLibrary("nst", NSTLibrary.class, nstOptions);
   }
 
   public static boolean isAvailable() { return ourNSTLibrary != null; }
 
   public static ID createTouchBar(String name, NSTLibrary.ItemCreator creator, String escID) {
-    ApplicationManager.getApplication().assertIsDispatchThread();
-    return ourNSTLibrary.createTouchBar(name, creator, escID);
+    return ourNSTLibrary.createTouchBar(name, creator, escID); // creates autorelease-pool internally
   }
 
   public static void releaseTouchBar(ID tbObj) {
@@ -100,12 +98,12 @@ public class NST {
   }
 
   public static void selectItemsToShow(ID tbObj, String[] ids, int count) {
-    ApplicationManager.getApplication().assertIsDispatchThread();
-    ourNSTLibrary.selectItemsToShow(tbObj, ids, count);
+    _assertIsDispatchThread();
+    ourNSTLibrary.selectItemsToShow(tbObj, ids, count); // creates autorelease-pool internally
   }
 
   public static void setPrincipal(ID tbObj, String uid) {
-    ourNSTLibrary.setPrincipal(tbObj, uid);
+    ourNSTLibrary.setPrincipal(tbObj, uid); // creates autorelease-pool internally
   }
 
   public static ID createButton(String uid,
@@ -118,7 +116,7 @@ public class NST {
     final byte[] raster4ByteRGBA = _getRaster(img);
     final int w = _getImgW(img);
     final int h = _getImgH(img);
-    return ourNSTLibrary.createButton(uid, buttWidth, buttFlags, text, raster4ByteRGBA, w, h, action);
+    return ourNSTLibrary.createButton(uid, buttWidth, buttFlags, text, raster4ByteRGBA, w, h, action); // called from AppKit, uses per-event autorelease-pool
   }
 
   public static ID createPopover(String uid,
@@ -131,16 +129,16 @@ public class NST {
     final byte[] raster4ByteRGBA = _getRaster(img);
     final int w = _getImgW(img);
     final int h = _getImgH(img);
-    return ourNSTLibrary.createPopover(uid, itemWidth, text, raster4ByteRGBA, w, h, tbObjExpand, tbObjTapAndHold);
+    return ourNSTLibrary.createPopover(uid, itemWidth, text, raster4ByteRGBA, w, h, tbObjExpand, tbObjTapAndHold); // called from AppKit, uses per-event autorelease-pool
   }
 
   public static ID createScrubber(String uid, int itemWidth, List<TBItemScrubber.ItemData> items) {
     final NSTLibrary.ScrubberItemData[] vals = _makeItemsArray2(items);
-    return ourNSTLibrary.createScrubber(uid, itemWidth, vals, vals != null ? vals.length : 0);
+    return ourNSTLibrary.createScrubber(uid, itemWidth, vals, vals != null ? vals.length : 0); // called from AppKit, uses per-event autorelease-pool
   }
 
   public static ID createGroupItem(String uid, ID[] items, int count) {
-    return ourNSTLibrary.createGroupItem(uid, items, count);
+    return ourNSTLibrary.createGroupItem(uid, items, count); // called from AppKit, uses per-event autorelease-pool
   }
 
   public static void updateButton(ID buttonObj,
@@ -150,12 +148,12 @@ public class NST {
                                   String text,
                                   Icon icon,
                                   NSTLibrary.Action action) {
-    ApplicationManager.getApplication().assertIsDispatchThread();
+    _assertIsDispatchThread();
     final BufferedImage img = _getImg4ByteRGBA(icon);
     final byte[] raster4ByteRGBA = _getRaster(img);
     final int w = _getImgW(img);
     final int h = _getImgH(img);
-    ourNSTLibrary.updateButton(buttonObj, updateOptions, buttWidth, buttonFlags, text, raster4ByteRGBA, w, h, action);
+    ourNSTLibrary.updateButton(buttonObj, updateOptions, buttWidth, buttonFlags, text, raster4ByteRGBA, w, h, action); // creates autorelease-pool internally
   }
 
   public static void updatePopover(ID popoverObj,
@@ -163,18 +161,18 @@ public class NST {
                                    String text,
                                    Icon icon,
                                    ID tbObjExpand, ID tbObjTapAndHold) {
-    ApplicationManager.getApplication().assertIsDispatchThread();
+    _assertIsDispatchThread();
     final BufferedImage img = _getImg4ByteRGBA(icon);
     final byte[] raster4ByteRGBA = _getRaster(img);
     final int w = _getImgW(img);
     final int h = _getImgH(img);
-    ourNSTLibrary.updatePopover(popoverObj, itemWidth, text, raster4ByteRGBA, w, h, tbObjExpand, tbObjTapAndHold);
+    ourNSTLibrary.updatePopover(popoverObj, itemWidth, text, raster4ByteRGBA, w, h, tbObjExpand, tbObjTapAndHold); // creates autorelease-pool internally
   }
 
   public static void updateScrubber(ID scrubObj, int itemWidth, List<TBItemScrubber.ItemData> items) {
-    ApplicationManager.getApplication().assertIsDispatchThread();
+    _assertIsDispatchThread();
     final NSTLibrary.ScrubberItemData[] vals = _makeItemsArray2(items);
-    ourNSTLibrary.updateScrubber(scrubObj, itemWidth, vals, vals != null ? vals.length : 0);
+    ourNSTLibrary.updateScrubber(scrubObj, itemWidth, vals, vals != null ? vals.length : 0); // creates autorelease-pool internally
   }
 
   private static NSTLibrary.ScrubberItemData[] _makeItemsArray2(List<TBItemScrubber.ItemData> items) {
@@ -259,8 +257,15 @@ public class NST {
     // icons generally should not exceed 44px in height (36px for circular icons)
     // Ideal icon size	    36px × 36px (18pt × 18pt @2x)
     // Maximum icon size    44px × 44px (22pt × 22pt @2x)
-    final int newIconW = 40;
-    final float fMulX = newIconW/(float)icon.getIconWidth();
+    final float fMulX = 40/16.f;
     return _getImg4ByteRGBA(icon, fMulX);
+  }
+
+  private static void _assertIsDispatchThread() {
+    final Application app = ApplicationManager.getApplication();
+    if (app != null)
+      app.assertIsDispatchThread();
+    else
+      assert SwingUtilities.isEventDispatchThread();
   }
 }

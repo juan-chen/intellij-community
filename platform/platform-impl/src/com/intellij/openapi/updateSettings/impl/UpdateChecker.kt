@@ -67,7 +67,7 @@ object UpdateChecker {
    * Has no effect on non-bundled or "essential" (i.e. required for one of open projects) plugins.
    */
   @Suppress("MemberVisibilityCanBePrivate")
-  val excludedFromUpdateCheckPlugins: HashSet<String> = hashSetOf<String>()
+  val excludedFromUpdateCheckPlugins: HashSet<String> = hashSetOf()
 
   private val updateUrl: String
     get() = System.getProperty("idea.updates.url") ?: ApplicationInfoEx.getInstanceEx().updateUrls.checkingUrl
@@ -191,6 +191,26 @@ object UpdateChecker {
 
     val strategy = UpdateStrategy(ApplicationInfo.getInstance().build, updateInfo, settings)
     return strategy.checkForUpdates()
+  }
+
+  @JvmStatic
+  @Throws(IOException::class)
+  fun getUpdatesInfo(settings: UpdateSettings): UpdatesInfo? {
+    val updateUrl = Urls.newFromEncoded(updateUrl)
+    LogUtil.debug(LOG, "load update xml (UPDATE_URL='%s')", updateUrl)
+
+    return HttpRequests.request(updateUrl)
+      .forceHttps(settings.canUseSecureConnection())
+      .connect {
+        try {
+          UpdatesInfo(loadElement(it.reader))
+        }
+        catch (e: JDOMException) {
+          // corrupted content, don't bother telling user
+          LOG.info(e)
+          null
+        }
+      }
   }
 
   private fun checkPluginsUpdate(updateSettings: UpdateSettings,

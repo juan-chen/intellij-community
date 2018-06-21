@@ -6,6 +6,7 @@ import com.intellij.lang.Language;
 import com.intellij.psi.codeStyle.CodeStyleSettings;
 import com.intellij.psi.codeStyle.CommonCodeStyleSettings;
 import com.intellij.psi.codeStyle.CustomCodeStyleSettings;
+import org.jetbrains.annotations.ApiStatus;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.Serializable;
@@ -18,6 +19,7 @@ import java.io.Serializable;
  * @see CustomCodeStyleSettings
  */
 @SuppressWarnings("unused")
+@ApiStatus.Experimental
 public abstract class CodeStyleBean implements Serializable {
 
   private @NotNull CodeStyleSettings myRootSettings;
@@ -56,6 +58,15 @@ public abstract class CodeStyleBean implements Serializable {
   @NotNull
   protected final CommonCodeStyleSettings getCommonSettings() {
     return myRootSettings.getCommonSettings(getLanguage());
+  }
+
+  @NotNull
+  protected final CommonCodeStyleSettings.IndentOptions getIndentOptions(boolean isWritable) {
+    CommonCodeStyleSettings.IndentOptions indentOptions = getCommonSettings().getIndentOptions();
+    if (indentOptions == null && isWritable) {
+      indentOptions = getCommonSettings().initIndentOptions();
+    }
+    return indentOptions != null ? indentOptions : myRootSettings.OTHER_INDENT_OPTIONS;
   }
 
   @NotNull

@@ -32,7 +32,6 @@ import com.intellij.openapi.fileTypes.StdFileTypes;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.ValidationInfo;
-import com.intellij.openapi.util.Comparing;
 import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
@@ -42,6 +41,7 @@ import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.JavaCodeStyleManager;
 import com.intellij.psi.codeStyle.SuggestedNameInfo;
 import com.intellij.psi.codeStyle.VariableKind;
+import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiTypesUtil;
 import com.intellij.refactoring.BaseRefactoringProcessor;
 import com.intellij.refactoring.RefactoringBundle;
@@ -69,6 +69,7 @@ import com.intellij.util.ui.table.EditorTextFieldJBTableRowRenderer;
 import com.intellij.util.ui.table.JBTableRow;
 import com.intellij.util.ui.table.JBTableRowEditor;
 import com.intellij.util.ui.table.JBTableRowRenderer;
+import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -155,6 +156,14 @@ public class JavaChangeSignatureDialog extends ChangeSignatureDialogBase<Paramet
         };
       }
     };
+  }
+
+  @Nullable
+  @Override
+  @PsiModifier.ModifierConstant
+  protected String getVisibility() {
+    //noinspection MagicConstant
+    return super.getVisibility();
   }
 
   @Override
@@ -701,35 +710,55 @@ public class JavaChangeSignatureDialog extends ChangeSignatureDialogBase<Paramet
     return doCalculateSignature(myMethod.getMethod());
   }
 
-  protected String doCalculateSignature(PsiMethod method) {
-    final StringBuilder buffer = new StringBuilder();
-    final PsiModifierList modifierList = method.getModifierList();
-    PsiModifierList copy = (PsiModifierList)modifierList.copy();
-    PsiAnnotation annotation = copy.findAnnotation(JavaMethodContractUtil.ORG_JETBRAINS_ANNOTATIONS_CONTRACT);
+  static String getModifiersText(PsiModifierList list, String newVisibility) {
+    final String oldVisibility = VisibilityUtil.getVisibilityModifier(list);
+    List<String> modifierKeywords = StreamEx.of(PsiTreeUtil.findChildrenOfType(list, PsiKeyword.class))
+                                            .map(PsiElement::getText)
+                                            .toList();
+    if (!oldVisibility.equals(newVisibility)) {
+      if (oldVisibility.equals(PsiModifier.PACKAGE_LOCAL)) {
+        modifierKeywords.add(0, PsiModifier.PACKAGE_LOCAL);
+      }
+      if (newVisibility.equals(PsiModifier.PACKAGE_LOCAL)) {
+        modifierKeywords.remove(oldVisibility);
+      } else {
+        modifierKeywords.replaceAll(m -> m.equals(oldVisibility) ? newVisibility : m);
+      }
+    }
+    return String.join(" ", modifierKeywords);
+  }
+
+  private String getAnnotationText(PsiMethod method, PsiModifierList modifierList) {
+    PsiAnnotation annotation = modifierList.findAnnotation(JavaMethodContractUtil.ORG_JETBRAINS_ANNOTATIONS_CONTRACT);
     if (annotation != null) {
       String[] oldNames = ContainerUtil.map2Array(method.getParameterList().getParameters(), String.class, PsiParameter::getName);
-      JavaParameterInfo[] parameters = ContainerUtil.map2Array(myParametersTableModel.getItems(), JavaParameterInfo.class, item -> item.parameter);
+      JavaParameterInfo[] parameters =
+        ContainerUtil.map2Array(myParametersTableModel.getItems(), JavaParameterInfo.class, item -> item.parameter);
       try {
         PsiAnnotation converted = ContractConverter.convertContract(method, oldNames, parameters);
         if (converted != null && converted != annotation) {
-          annotation.replace(converted);
+          String text = converted.getText();
+          return text.replaceFirst("^@"+JavaMethodContractUtil.ORG_JETBRAINS_ANNOTATIONS_CONTRACT, "@Contract");
         }
       }
-      catch (ContractConverter.ContractConversionException ignored) { }
+      catch (ContractConverter.ContractConversionException ignored) {
+      }
+      return annotation.getText();
     }
-    final String oldModifier = VisibilityUtil.getVisibilityModifier(modifierList);
-    @PsiModifier.ModifierConstant final String newModifier = ObjectUtils.notNull(getVisibility(), PsiModifier.PACKAGE_LOCAL);
-    if (!Comparing.equal(newModifier, oldModifier)) {
-      copy.setModifierProperty(oldModifier, false);
-      copy.setModifierProperty(newModifier, true);
-    }
-    String modifiers = copy.getText().replaceAll("\n\\s+", "\n");
+    return "";
+  }
 
+  protected String doCalculateSignature(PsiMethod method) {
+    final StringBuilder buffer = new StringBuilder();
+    final PsiModifierList modifierList = method.getModifierList();
+    final String annotationText = getAnnotationText(method, modifierList);
+    buffer.append(annotationText);
+    if (!annotationText.isEmpty()) {
+      buffer.append("\n");
+    }
+    final String modifiers = getModifiersText(modifierList, ObjectUtils.notNull(getVisibility(), PsiModifier.PACKAGE_LOCAL));
     buffer.append(modifiers);
-    if (modifiers.length() > 0 &&
-        !StringUtil.endsWithChar(modifiers, '\n') &&
-        !StringUtil.endsWithChar(modifiers, '\r') &&
-        !StringUtil.endsWithChar(modifiers, ' ')) {
+    if (!modifiers.isEmpty()) {
       buffer.append(" ");
     }
 

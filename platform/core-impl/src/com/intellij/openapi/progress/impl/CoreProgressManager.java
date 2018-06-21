@@ -191,11 +191,6 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
   }
 
   @Override
-  public void setCancelButtonText(String cancelButtonText) {
-
-  }
-
-  @Override
   public boolean runProcessWithProgressSynchronously(@NotNull Runnable process,
                                                      @NotNull @Nls String progressTitle,
                                                      boolean canBeCanceled,
@@ -471,14 +466,14 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
       exception = e;
     }
 
+    final boolean finalCanceled = processCanceled || progressIndicator.isCanceled();
+    final Throwable finalException = exception;
+
     if (ApplicationManager.getApplication().isDispatchThread()) {
-      finishTask(task, processCanceled || progressIndicator.isCanceled(), exception);
+      finishTask(task, finalCanceled, finalException);
     }
     else {
-      final boolean finalCanceled = processCanceled;
-      final Throwable finalException = exception;
-      ApplicationManager.getApplication().invokeAndWait(
-        () -> finishTask(task, finalCanceled || progressIndicator.isCanceled(), finalException), modalityState);
+      ApplicationManager.getApplication().invokeAndWait(() -> finishTask(task, finalCanceled, finalException), modalityState);
     }
   }
 
@@ -661,12 +656,6 @@ public class CoreProgressManager extends ProgressManager implements Disposable {
     synchronized (threadsUnderIndicator) {
       return threadsUnderCanceledIndicator.contains(thread);
     }
-  }
-
-  @NotNull
-  @Override
-  protected final NonCancelableSection startNonCancelableSection() {
-    throw new UnsupportedOperationException();
   }
 
   @Override

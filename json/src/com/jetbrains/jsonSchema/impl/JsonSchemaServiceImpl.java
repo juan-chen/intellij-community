@@ -2,11 +2,8 @@
 package com.jetbrains.jsonSchema.impl;
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
-import com.intellij.json.JsonLanguage;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.fileTypes.LanguageFileType;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.AtomicClearableLazyValue;
 import com.intellij.openapi.util.Factory;
@@ -17,10 +14,7 @@ import com.intellij.openapi.vfs.impl.http.HttpVirtualFile;
 import com.intellij.util.containers.ConcurrentList;
 import com.intellij.util.containers.ContainerUtil;
 import com.jetbrains.jsonSchema.JsonSchemaVfsListener;
-import com.jetbrains.jsonSchema.extension.JsonSchemaFileProvider;
-import com.jetbrains.jsonSchema.extension.JsonSchemaInfo;
-import com.jetbrains.jsonSchema.extension.JsonSchemaProviderFactory;
-import com.jetbrains.jsonSchema.extension.SchemaType;
+import com.jetbrains.jsonSchema.extension.*;
 import com.jetbrains.jsonSchema.ide.JsonSchemaService;
 import com.jetbrains.jsonSchema.remote.JsonFileResolver;
 import com.jetbrains.jsonSchema.remote.JsonSchemaCatalogManager;
@@ -240,11 +234,6 @@ public class JsonSchemaServiceImpl implements JsonSchemaService {
     return JsonCachedValues.getSchemaObject(schemaFile, myProject);
   }
 
-  @NotNull
-  public JsonSchemaCatalogManager getCatalogManager() {
-    return myCatalogManager;
-  }
-
   @Override
   public boolean isSchemaFile(@NotNull VirtualFile file) {
     return myState.getFiles().contains(file)
@@ -289,9 +278,7 @@ public class JsonSchemaServiceImpl implements JsonSchemaService {
   }
 
   private static boolean isProviderAvailable(@NotNull final VirtualFile file, @NotNull JsonSchemaFileProvider provider) {
-    final FileType type = file.getFileType();
-    final boolean isJson = type instanceof LanguageFileType && ((LanguageFileType)type).getLanguage().isKindOf(JsonLanguage.INSTANCE);
-    return (isJson || !SchemaType.userSchema.equals(provider.getSchemaType())) && provider.isAvailable(file);
+    return provider.isAvailable(file);
   }
 
   @Nullable
@@ -324,6 +311,12 @@ public class JsonSchemaServiceImpl implements JsonSchemaService {
   @Override
   public void triggerUpdateRemote() {
     myCatalogManager.triggerUpdateCatalog(myProject);
+  }
+
+  @Override
+  public boolean isApplicableToFile(@Nullable VirtualFile file) {
+    if (file == null) return false;
+    return Arrays.stream(JsonSchemaEnabler.EXTENSION_POINT_NAME.getExtensions()).anyMatch(e -> e.isEnabledForFile(file));
   }
 
   private static class MyState {

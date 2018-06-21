@@ -147,6 +147,11 @@ class JsonSchemaAnnotatorChecker {
         if (JsonSchemaType._boolean.equals(type)) {
           checkForEnum(value.getDelegate(), schema);
         }
+        else if (JsonSchemaType._string_number.equals(type)) {
+          checkNumber(value.getDelegate(), schema, type);
+          checkString(value.getDelegate(), schema);
+          checkForEnum(value.getDelegate(), schema);
+        }
         else if (JsonSchemaType._number.equals(type) || JsonSchemaType._integer.equals(type)) {
           checkNumber(value.getDelegate(), schema, type);
           checkForEnum(value.getDelegate(), schema);
@@ -283,16 +288,11 @@ class JsonSchemaAnnotatorChecker {
     if (object.shouldCheckIntegralRequirements()) {
       final List<String> required = schema.getRequired();
       if (required != null) {
-        for (String req : required) {
-          if (!set.contains(req)) {
-            JsonSchemaObject propertySchema = resolvePropertySchema(schema, req);
-            error("Missing required property '" + req + "'", value.getDelegate(),
-                  JsonValidationError.FixableIssueKind.MissingProperty,
-                  new JsonValidationError.MissingPropertyIssueData(req,
-                                                                   propertySchema == null ? null : propertySchema.getType(),
-                                                                   propertySchema == null ? null : propertySchema.getDefault(),
-                                                                   propertySchema != null && propertySchema.getEnum() != null));
-          }
+        HashSet<String> requiredNames = ContainerUtil.newHashSet(required);
+        requiredNames.removeAll(set);
+        if (!requiredNames.isEmpty()) {
+          JsonValidationError.MissingMultiplePropsIssueData data = createMissingPropertiesData(schema, requiredNames);
+          error("Missing required " + data.getMessage(false), value.getDelegate(), JsonValidationError.FixableIssueKind.MissingProperty, data);
         }
       }
       if (schema.getMinProperties() != null && propertyList.size() < schema.getMinProperties()) {
@@ -306,17 +306,14 @@ class JsonSchemaAnnotatorChecker {
         for (Map.Entry<String, List<String>> entry : dependencies.entrySet()) {
           if (set.contains(entry.getKey())) {
             final List<String> list = entry.getValue();
-            for (String s : list) {
-              if (!set.contains(s)) {
-                JsonSchemaObject propertySchema = resolvePropertySchema(schema, s);
-                error("Dependency is violated: '" + s + "' must be specified, since '" + entry.getKey() + "' is specified",
-                      value.getDelegate(),
-                      JsonValidationError.FixableIssueKind.MissingProperty,
-                      new JsonValidationError.MissingPropertyIssueData(s,
-                                                                       propertySchema == null ? null : propertySchema.getType(),
-                                                                       propertySchema == null ? null : propertySchema.getDefault(),
-                                                                       propertySchema != null && propertySchema.getEnum() != null));
-              }
+            HashSet<String> deps = ContainerUtil.newHashSet(list);
+            deps.removeAll(set);
+            if (!deps.isEmpty()) {
+              JsonValidationError.MissingMultiplePropsIssueData data = createMissingPropertiesData(schema, deps);
+              error("Dependency is violated: " + data.getMessage(false) + " must be specified, since '" + entry.getKey() + "' is specified",
+                    value.getDelegate(),
+                    JsonValidationError.FixableIssueKind.MissingProperty,
+                    data);
             }
           }
         }
@@ -332,6 +329,21 @@ class JsonSchemaAnnotatorChecker {
     }
 
     validateAsJsonSchema(object.getDelegate());
+  }
+
+  @NotNull
+  private static JsonValidationError.MissingMultiplePropsIssueData createMissingPropertiesData(@NotNull JsonSchemaObject schema,
+                                                                                               HashSet<String> requiredNames) {
+    List<JsonValidationError.MissingPropertyIssueData> allProps = ContainerUtil.newArrayList();
+    for (String req: requiredNames) {
+      JsonSchemaObject propertySchema = resolvePropertySchema(schema, req);
+      allProps.add(new JsonValidationError.MissingPropertyIssueData(req,
+                                                                    propertySchema == null ? null : propertySchema.getType(),
+                                                                    propertySchema == null ? null : propertySchema.getDefault(),
+                                                                    propertySchema != null && propertySchema.getEnum() != null));
+    }
+
+    return new JsonValidationError.MissingMultiplePropsIssueData(allProps);
   }
 
   private static JsonSchemaObject resolvePropertySchema(@NotNull JsonSchemaObject schema, String req) {
@@ -351,27 +363,6 @@ class JsonSchemaAnnotatorChecker {
       }
     }
     return null;
-  }
-
-  @Nullable
-  private static JsonSchemaType resolvePropertyType(@NotNull JsonSchemaObject schema, String req) {
-    JsonSchemaType type = null;
-    if (schema.getProperties().containsKey(req)) {
-      type = schema.getProperties().get(req).getType();
-    }
-    else {
-      JsonSchemaObject propertySchema = schema.getMatchingPatternPropertySchema(req);
-      if (propertySchema != null) {
-        type = propertySchema.getType();
-      }
-      else {
-        JsonSchemaObject additionalPropertiesSchema = schema.getAdditionalPropertiesSchema();
-        if (additionalPropertiesSchema != null) {
-          type = additionalPropertiesSchema.getType();
-        }
-      }
-    }
-    return type;
   }
 
   private void validateAsJsonSchema(@NotNull PsiElement objElement) {
@@ -458,25 +449,25 @@ class JsonSchemaAnnotatorChecker {
     if (schema.getEnum() == null || schema.getPattern() != null) return;
     final JsonLikePsiWalker walker = JsonLikePsiWalker.getWalker(value, schema);
     if (walker == null) return;
-    final String text = StringUtil.notNullize(value.getText());
+    final String text = StringUtil.notNullize(walker.getNodeTextForValidation(value));
     final List<Object> objects = schema.getEnum();
     for (Object object : objects) {
       if (walker.onlyDoubleQuotesForStringLiterals()) {
         if (object.toString().equalsIgnoreCase(text)) return;
       }
       else {
-        if (equalsIgnoreQuotesAndCase(object.toString(), text)) return;
+        if (equalsIgnoreQuotesAndCase(object.toString(), text, walker.quotesForStringLiterals())) return;
       }
     }
     error("Value should be one of: [" + StringUtil.join(objects, o -> o.toString(), ", ") + "]", value,
           JsonValidationError.FixableIssueKind.NonEnumValue, null);
   }
 
-  private static boolean equalsIgnoreQuotesAndCase(@NotNull final String s1, @NotNull final String s2) {
+  private static boolean equalsIgnoreQuotesAndCase(@NotNull final String s1, @NotNull final String s2, boolean requireQuotedValues) {
     final boolean quoted1 = StringUtil.isQuotedString(s1);
     final boolean quoted2 = StringUtil.isQuotedString(s2);
-    if (quoted1 != quoted2) return false;
-    if (!quoted1) return s1.equalsIgnoreCase(s2);
+    if (requireQuotedValues && quoted1 != quoted2) return false;
+    if (requireQuotedValues && !quoted1) return s1.equalsIgnoreCase(s2);
     return StringUtil.unquoteString(s1).equalsIgnoreCase(StringUtil.unquoteString(s2));
   }
 
@@ -559,6 +550,11 @@ class JsonSchemaAnnotatorChecker {
         if (JsonSchemaType._integer.equals(input) && JsonSchemaType._number.equals(matchType)) {
           return input;
         }
+        if (JsonSchemaType._string_number.equals(input) && (JsonSchemaType._number.equals(matchType)
+                                                            || JsonSchemaType._integer.equals(matchType)
+                                                            || JsonSchemaType._string.equals(matchType))) {
+          return input;
+        }
         return matchType;
       }
     }
@@ -589,8 +585,10 @@ class JsonSchemaAnnotatorChecker {
   private void checkArrayItems(@NotNull JsonValueAdapter array, @NotNull final List<JsonValueAdapter> list, final JsonSchemaObject schema) {
     if (schema.isUniqueItems()) {
       final MultiMap<String, JsonValueAdapter> valueTexts = new MultiMap<>();
+      final JsonLikePsiWalker walker = JsonLikePsiWalker.getWalker(array.getDelegate(), schema);
+      assert walker != null;
       for (JsonValueAdapter adapter : list) {
-        valueTexts.putValue(adapter.getDelegate().getText(), adapter);
+        valueTexts.putValue(walker.getNodeTextForValidation(adapter.getDelegate()), adapter);
       }
 
       for (Map.Entry<String, Collection<JsonValueAdapter>> entry: valueTexts.entrySet()) {
@@ -652,7 +650,9 @@ class JsonSchemaAnnotatorChecker {
   }
 
   private void checkString(PsiElement propValue, JsonSchemaObject schema) {
-    final String value = StringUtil.unquoteString(propValue.getText());
+    final JsonLikePsiWalker walker = JsonLikePsiWalker.getWalker(propValue, schema);
+    assert walker != null;
+    final String value = StringUtil.unquoteString(walker.getNodeTextForValidation(propValue));
     if (schema.getMinLength() != null) {
       if (value.length() < schema.getMinLength()) {
         error("String is shorter than " + schema.getMinLength(), propValue);
@@ -691,9 +691,12 @@ class JsonSchemaAnnotatorChecker {
 
   private void checkNumber(PsiElement propValue, JsonSchemaObject schema, JsonSchemaType schemaType) {
     Number value;
+    final JsonLikePsiWalker walker = JsonLikePsiWalker.getWalker(propValue, schema);
+    assert walker != null;
+    String valueText = walker.getNodeTextForValidation(propValue);
     if (JsonSchemaType._integer.equals(schemaType)) {
       try {
-        value = Integer.valueOf(propValue.getText());
+        value = Integer.valueOf(valueText);
       }
       catch (NumberFormatException e) {
         error("Integer value expected", propValue,
@@ -704,12 +707,14 @@ class JsonSchemaAnnotatorChecker {
     }
     else {
       try {
-        value = Double.valueOf(propValue.getText());
+        value = Double.valueOf(valueText);
       }
       catch (NumberFormatException e) {
-        error("Double value expected", propValue,
-              JsonValidationError.FixableIssueKind.TypeMismatch,
-              new JsonValidationError.TypeMismatchIssueData(new JsonSchemaType[]{schemaType}));
+        if (!JsonSchemaType._string_number.equals(schemaType)) {
+          error("Double value expected", propValue,
+                JsonValidationError.FixableIssueKind.TypeMismatch,
+                new JsonValidationError.TypeMismatchIssueData(new JsonSchemaType[]{schemaType}));
+        }
         return;
       }
     }
@@ -854,7 +859,7 @@ class JsonSchemaAnnotatorChecker {
         }
       }
     }
-    if (correct.size() == 1) return current;
+    if (correct.size() == 1) return correct.get(0);
     if (correct.size() > 0) {
       final JsonSchemaType type = JsonSchemaType.getType(value);
       if (type != null) {

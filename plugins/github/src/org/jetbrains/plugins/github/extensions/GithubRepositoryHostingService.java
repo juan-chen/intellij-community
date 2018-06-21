@@ -53,23 +53,28 @@ public class GithubRepositoryHostingService extends GitRepositoryHostingService 
     return new RepositoryListLoader() {
       @Override
       public boolean isEnabled() {
-        return myAuthenticationManager.hasAccounts();
+        for (GithubAccount account: myAuthenticationManager.getAccounts()) {
+          if (myAuthenticationManager.hasTokenForAccount(account)) return true;
+        }
+        return false;
       }
 
       @Override
       public boolean enable() {
         if (!GithubAccountsMigrationHelper.getInstance().migrate(project)) return false;
-        return myAuthenticationManager.ensureHasAccounts(project);
+        return myAuthenticationManager.ensureHasAccountsWithTokens(project);
       }
 
       @NotNull
       @Override
-      public List<String> getAvailableRepositories(@NotNull ProgressIndicator progressIndicator) throws RepositoryListLoadingException {
-        try {
-          List<String> urls = new ArrayList<>();
-          for (GithubAccount account : myAuthenticationManager.getAccounts()) {
+      public Result getAvailableRepositoriesFromMultipleSources(@NotNull ProgressIndicator progressIndicator) {
+        List<String> urls = new ArrayList<>();
+        List<RepositoryListLoadingException> exceptions = new ArrayList<>();
+
+        for (GithubAccount account: myAuthenticationManager.getAccounts()) {
+          try {
             urls.addAll(
-              myApiTaskExecutor.execute(progressIndicator, account, connection -> GithubApiUtil.getAvailableRepos(connection))
+              myApiTaskExecutor.execute(progressIndicator, account, connection -> GithubApiUtil.getAvailableRepos(connection), true)
                                .stream()
                                .sorted(Comparator.comparing(GithubRepo::getUserName).thenComparing(GithubRepo::getName))
                                .map(repo -> myGitHelper.getRemoteUrl(account.getServer(),
@@ -78,11 +83,11 @@ public class GithubRepositoryHostingService extends GitRepositoryHostingService 
                                .collect(Collectors.toList())
             );
           }
-          return urls;
+          catch (Exception e) {
+            exceptions.add(new RepositoryListLoadingException("Cannot load repositories from Github", e));
+          }
         }
-        catch (Exception e) {
-          throw new RepositoryListLoadingException("Error connecting to Github", e);
-        }
+        return new Result(urls, exceptions);
       }
     };
   }

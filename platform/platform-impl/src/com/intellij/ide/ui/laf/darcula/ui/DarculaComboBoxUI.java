@@ -96,7 +96,8 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
       if ("enabled".equals(e.getPropertyName())) {
         EditorTextField etf = UIUtil.findComponentOfType((JComponent)editor, EditorTextField.class);
         if (etf != null) {
-          Color color = e.getNewValue() == Boolean.FALSE ? UIManager.getColor("ComboBox.disabledBackground") : null;
+          boolean enabled = e.getNewValue() == Boolean.TRUE;
+          Color color = UIManager.getColor(enabled ? "TextField.background" : "ComboBox.disabledBackground");
           etf.setBackground(color);
         }
       }
@@ -132,7 +133,7 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
           innerShape.lineTo(lw, r.height - bw - lw);
           innerShape.closePath();
 
-          g2.setColor(getArrowButtonBackgroundColor(comboBox.isEnabled()));
+          g2.setColor(getArrowButtonBackgroundColor(comboBox.isEnabled(), comboBox.isEditable()));
           g2.fill(innerShape);
 
           // Paint vertical line
@@ -161,7 +162,7 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
   @SuppressWarnings("unused")
   @Deprecated
   protected Color getArrowButtonFillColor(Color defaultColor) {
-    return getArrowButtonBackgroundColor(comboBox.isEnabled());
+    return getArrowButtonBackgroundColor(comboBox.isEnabled(), comboBox.isEditable());
   }
 
   @NotNull
@@ -396,6 +397,9 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
   protected Dimension getSizeWithButton(Dimension size, Dimension editorSize) {
     Insets i = getInsets();
     Dimension abSize = arrowButton.getPreferredSize();
+    if (abSize == null) {
+      abSize = JBUI.emptySize();
+    }
 
     if (isCompact(comboBox) && size != null) {
       JBInsets.removeFrom(size, padding); // don't count paddings in compact mode
@@ -455,6 +459,8 @@ public class DarculaComboBoxUI extends BasicComboBoxUI implements Border, ErrorB
         EditorTextField etf = UIUtil.findComponentOfType((JComponent)editor, EditorTextField.class);
         if (etf != null) {
           etf.addFocusListener(editorFocusListener);
+          Color c = UIManager.getColor(comboBox.isEnabled() ? "TextField.background" : "ComboBox.disabledBackground");
+          etf.setBackground(c);
         }
       }
     }

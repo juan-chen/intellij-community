@@ -17,6 +17,7 @@ package com.jetbrains.python.sdk;
 
 import com.google.common.collect.Sets;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.Sdk;
 import com.intellij.openapi.projectRoots.SdkAdditionalData;
@@ -52,7 +53,7 @@ public class PythonSdkAdditionalData implements SdkAdditionalData {
   private final VirtualFilePointerContainer myExcludedPaths;
 
   private final PythonSdkFlavor myFlavor;
-  private String myAssociatedProjectPath;
+  private String myAssociatedModulePath;
   private boolean myAssociateWithNewProject;
 
   public PythonSdkAdditionalData(@Nullable PythonSdkFlavor flavor) {
@@ -60,10 +61,13 @@ public class PythonSdkAdditionalData implements SdkAdditionalData {
     myAddedPaths = VirtualFilePointerManager.getInstance().createContainer(ApplicationManager.getApplication());
     myExcludedPaths = VirtualFilePointerManager.getInstance().createContainer(ApplicationManager.getApplication());
   }
-  public PythonSdkAdditionalData(PythonSdkAdditionalData from) {
+
+  protected PythonSdkAdditionalData(@NotNull PythonSdkAdditionalData from) {
     myFlavor = from.getFlavor();
     myAddedPaths = from.myAddedPaths.clone(ApplicationManager.getApplication());
     myExcludedPaths = from.myExcludedPaths.clone(ApplicationManager.getApplication());
+    myAssociatedModulePath = from.myAssociatedModulePath;
+    myAssociateWithNewProject = from.myAssociateWithNewProject;
   }
 
   @NotNull
@@ -85,19 +89,23 @@ public class PythonSdkAdditionalData implements SdkAdditionalData {
     }
   }
 
-  public String getAssociatedProjectPath() {
-    return myAssociatedProjectPath;
+  public String getAssociatedModulePath() {
+    return myAssociatedModulePath;
   }
 
-  public void setAssociatedProjectPath(@Nullable String associatedProjectPath) {
-    myAssociatedProjectPath = associatedProjectPath;
+  public void resetAssociatedModulePath() {
+    setAssociatedModulePath(null);
+  }
+
+  public void setAssociatedModulePath(@Nullable String associatedModulePath) {
+    myAssociatedModulePath = associatedModulePath;
     myAssociateWithNewProject = false;
   }
 
-  public void associateWithProject(@NotNull Project project) {
-    final String path = project.getBasePath();
+  public void associateWithModule(@NotNull Module module) {
+    final String path = PySdkExtKt.getBasePath(module);
     if (path != null) {
-      myAssociatedProjectPath = FileUtil.toSystemIndependentName(path);
+      myAssociatedModulePath = FileUtil.toSystemIndependentName(path);
     }
     myAssociateWithNewProject = false;
   }
@@ -106,9 +114,9 @@ public class PythonSdkAdditionalData implements SdkAdditionalData {
     myAssociateWithNewProject = true;
   }
 
-  public void reassociateWithCreatedProject(@NotNull Project project) {
+  public void reAssociateWithCreatedProject(@NotNull Project project) {
     if (myAssociateWithNewProject) {
-      associateWithProject(project);
+      setAssociatedModulePath(project.getBasePath());
     }
   }
 
@@ -116,8 +124,8 @@ public class PythonSdkAdditionalData implements SdkAdditionalData {
     savePaths(rootElement, myAddedPaths, PATHS_ADDED_BY_USER_ROOT, PATH_ADDED_BY_USER);
     savePaths(rootElement, myExcludedPaths, PATHS_REMOVED_BY_USER_ROOT, PATH_REMOVED_BY_USER);
 
-    if (myAssociatedProjectPath != null) {
-      rootElement.setAttribute(ASSOCIATED_PROJECT_PATH, myAssociatedProjectPath);
+    if (myAssociatedModulePath != null) {
+      rootElement.setAttribute(ASSOCIATED_PROJECT_PATH, myAssociatedModulePath);
     }
   }
 
@@ -137,17 +145,15 @@ public class PythonSdkAdditionalData implements SdkAdditionalData {
   @NotNull
   public static PythonSdkAdditionalData load(Sdk sdk, @Nullable Element element) {
     final PythonSdkAdditionalData data = new PythonSdkAdditionalData(PythonSdkFlavor.getFlavor(sdk.getHomePath()));
-
-    data.load(element, data);
-
+    data.load(element);
     return data;
   }
 
-  protected void load(@Nullable Element element, @NotNull PythonSdkAdditionalData data) {
+  protected void load(@Nullable Element element) {
     collectPaths(JDOMExternalizer.loadStringsList(element, PATHS_ADDED_BY_USER_ROOT, PATH_ADDED_BY_USER),myAddedPaths);
     collectPaths(JDOMExternalizer.loadStringsList(element, PATHS_REMOVED_BY_USER_ROOT, PATH_REMOVED_BY_USER),myExcludedPaths);
     if (element != null) {
-      data.setAssociatedProjectPath(element.getAttributeValue(ASSOCIATED_PROJECT_PATH));
+      setAssociatedModulePath(element.getAttributeValue(ASSOCIATED_PROJECT_PATH));
     }
   }
 

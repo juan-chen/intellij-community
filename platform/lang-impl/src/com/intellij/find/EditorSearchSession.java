@@ -4,6 +4,7 @@ package com.intellij.find;
 
 import com.intellij.execution.impl.ConsoleViewUtil;
 import com.intellij.find.editorHeaderActions.*;
+import com.intellij.find.impl.RegExHelpPopup;
 import com.intellij.find.impl.livePreview.LivePreviewController;
 import com.intellij.find.impl.livePreview.SearchResults;
 import com.intellij.ide.ui.UISettings;
@@ -109,6 +110,8 @@ public class EditorSearchSession implements SearchSession,
       .addExtraSearchActions(new ToggleMatchCase(),
                              new ToggleWholeWordsOnlyAction(),
                              new ToggleRegex(),
+                             new DefaultCustomComponentAction(
+                               () -> RegExHelpPopup.createRegExLink("<html><body><b>?</b></body></html>", null, null)),
                              new StatusTextAction(),
                              new DefaultCustomComponentAction(() -> myClickToHighlightLabel))
       .addSearchFieldActions(new RestorePreviousSettingsAction())
@@ -491,7 +494,7 @@ public class EditorSearchSession implements SearchSession,
 
     @Override
     public final void update(AnActionEvent e) {
-      JButton button = (JButton)e.getPresentation().getClientProperty(CUSTOM_COMPONENT_PROPERTY);
+      JButton button = (JButton)e.getPresentation().getClientProperty(COMPONENT_KEY);
       if (button != null) {
         update(button);
       }
