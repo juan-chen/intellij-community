@@ -34,13 +34,16 @@ import org.jetbrains.plugins.groovy.lang.psi.stubs.GrVariableDeclarationStub;
 import org.jetbrains.plugins.groovy.lang.psi.util.PsiUtil;
 import org.jetbrains.plugins.groovy.lang.resolve.ResolveUtil;
 
+import java.util.Arrays;
+import java.util.List;
+
 import static org.jetbrains.plugins.groovy.lang.resolve.ResolveUtilKt.shouldProcessLocals;
 
 /**
  * @author: Dmitry.Krasilschikov
  */
 public class GrVariableDeclarationImpl extends GrStubElementBase<GrVariableDeclarationStub>
-  implements GrVariableDeclaration, StubBasedPsiElement<GrVariableDeclarationStub> {
+  implements GrVariableDeclaration, StubBasedPsiElement<GrVariableDeclarationStub>, PsiListLikeElement {
 
   private static final Logger LOG = Logger.getInstance(GrVariableDeclarationImpl.class);
 
@@ -158,6 +161,7 @@ public class GrVariableDeclarationImpl extends GrStubElementBase<GrVariableDecla
     visitor.visitVariableDeclaration(this);
   }
 
+  @Override
   public String toString() {
     return "Variable definitions";
   }
@@ -228,7 +232,7 @@ public class GrVariableDeclarationImpl extends GrStubElementBase<GrVariableDecla
   }
 
   private class GrTypeReference extends PsiReferenceBase<GrVariableDeclaration> {
-    public GrTypeReference(TextRange range) {
+    GrTypeReference(TextRange range) {
       super(GrVariableDeclarationImpl.this, range, true);
     }
 
@@ -248,15 +252,15 @@ public class GrVariableDeclarationImpl extends GrStubElementBase<GrVariableDecla
       }
     }
 
-    @NotNull
-    @Override
-    public Object[] getVariants() {
-      return EMPTY_ARRAY;
-    }
-
     @Override
     public PsiElement bindToElement(@NotNull PsiElement element) throws IncorrectOperationException {
       return getElement();
     }
+  }
+
+  @NotNull
+  @Override
+  public List<? extends PsiElement> getComponents() {
+    return Arrays.asList(getVariables());
   }
 }

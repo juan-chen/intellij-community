@@ -72,7 +72,6 @@ import static com.intellij.openapi.util.Pair.pair;
 
 /**
  * @author Eugene Zhuravlev
- * @since 21.09.2011
  */
 public class JavaBuilder extends ModuleLevelBuilder {
   private static final Logger LOG = Logger.getInstance("#org.jetbrains.jps.incremental.java.JavaBuilder");
@@ -420,27 +419,25 @@ public class JavaBuilder extends ModuleLevelBuilder {
 
       Collection<File> classPath = originalClassPath;
       Collection<File> modulePath = Collections.emptyList();
+      Collection<File> upgradeModulePath = Collections.emptyList();
 
       if (hasModules) {
         // in Java 9, named modules are not allowed to read classes from the classpath
         // moreover, the compiler requires all transitive dependencies to be on the module path
         modulePath = ProjectPaths.getCompilationModulePath(chunk, false);
         classPath = Collections.emptyList();
+        // modules located above the JDK make a module upgrade path
+        upgradeModulePath = platformCp;
+        platformCp = Collections.emptyList();
       }
 
-      if (!platformCp.isEmpty()) {
-        if (hasModules) {
-          modulePath = JBIterable.from(platformCp).append(modulePath).toList();
-          platformCp = Collections.emptyList();
-        }
-        else if ((getChunkSdkVersion(chunk)) >= 9) {
-          // if chunk's SDK is 9 or higher, there is no way to specify full platform classpath
-          // because platform classes are stored in jimage binary files with unknown format.
-          // Because of this we are clearing platform classpath so that javac will resolve against its own boot classpath
-          // and prepending additional jars from the JDK configuration to compilation classpath
-          classPath = JBIterable.from(platformCp).append(classPath).toList();
-          platformCp = Collections.emptyList();
-        }
+      if (!platformCp.isEmpty() && (getChunkSdkVersion(chunk)) >= 9) {
+        // if chunk's SDK is 9 or higher, there is no way to specify full platform classpath
+        // because platform classes are stored in jimage binary files with unknown format.
+        // Because of this we are clearing platform classpath so that javac will resolve against its own boot classpath
+        // and prepending additional jars from the JDK configuration to compilation classpath
+        classPath = JBIterable.from(platformCp).append(classPath).toList();
+        platformCp = Collections.emptyList();
       }
 
       final ClassProcessingConsumer classesConsumer = new ClassProcessingConsumer(context, outputSink);
@@ -448,7 +445,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
       if (!shouldForkJavac) {
         updateCompilerUsageStatistics(context, compilingTool.getDescription(), chunk);
         rc = JavacMain.compile(
-          options, files, classPath, platformCp, modulePath, sourcePath, outs, diagnosticSink, classesConsumer,
+          options, files, classPath, platformCp, modulePath, upgradeModulePath, sourcePath, outs, diagnosticSink, classesConsumer,
           context.getCancelStatus(), compilingTool
         );
       }
@@ -457,8 +454,8 @@ public class JavaBuilder extends ModuleLevelBuilder {
         final ExternalJavacManager server = ensureJavacServerStarted(context);
         rc = server.forkJavac(
           forkSdk.getFirst(),
-          getExternalJavacHeapSize(),
-          vmOptions, options, platformCp, classPath, modulePath, sourcePath,
+          Utils.suggestForkedCompilerHeapSize(),
+          vmOptions, options, platformCp, classPath, upgradeModulePath, modulePath, sourcePath,
           files, outs, diagnosticSink, classesConsumer, compilingTool, context.getCancelStatus()
         );
       }
@@ -482,18 +479,6 @@ public class JavaBuilder extends ModuleLevelBuilder {
     for (JpsModule module : chunk.getModules()) {
       names.add(module.getName());
     }
-  }
-
-  private static int getExternalJavacHeapSize() {
-    //final JpsProject project = context.getProjectDescriptor().getProject();
-    //final JpsJavaCompilerConfiguration config = JpsJavaExtensionService.getInstance().getOrCreateCompilerConfiguration(project);
-    //final JpsJavaCompilerOptions options = config.getCurrentCompilerOptions();
-    //return options.MAXIMUM_HEAP_SIZE;
-    final int maxMbytes = (int)(Runtime.getRuntime().maxMemory() / 1048576L);
-    if (maxMbytes < 0) {
-      return -1; // in case of int overflow, return -1 to let VM choose the heap size
-    }
-    return Math.max(maxMbytes * 75 / 100, 256); // minimum 256 Mb, maximum 75% from JPS max heap size
   }
 
   @Nullable
@@ -604,8 +589,10 @@ public class JavaBuilder extends ModuleLevelBuilder {
       // was not able to determine jdk version, so assuming in-process compiler
       return false;
     }
-    // compilerSdkVersion is 9+ here, so applying JEP 182 "Retiring javac 'one plus three back'" policy
-    return Math.abs(compilerSdkVersion - chunkLanguageLevel) > 3;
+    // compiler version is 9+ here, so:
+    //  - java 5 and older are not supported for sure
+    //  - applying '5 versions back' policy deduced from the current behavior of those JDKs
+    return chunkLanguageLevel < 6 || Math.abs(compilerSdkVersion - chunkLanguageLevel) > 5;
   }
 
   private static boolean isJavac(final JavaCompilingTool compilingTool) {
@@ -866,7 +853,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
   /**
    * @return true if annotation processing is enabled and corresponding options were added, false if profile is null or disabled
    */
-  public static boolean addAnnotationProcessingOptions(List<String> options, @Nullable AnnotationProcessingConfiguration profile) {
+  public static boolean addAnnotationProcessingOptions(List<? super String> options, @Nullable AnnotationProcessingConfiguration profile) {
     if (profile == null || !profile.isEnabled()) {
       options.add("-proc:none");
       return false;
@@ -950,7 +937,7 @@ public class JavaBuilder extends ModuleLevelBuilder {
   public static int getModuleBytecodeTarget(CompileContext context, ModuleChunk chunk, JpsJavaCompilerConfiguration compilerConfiguration) {
     return getModuleBytecodeTarget(context, chunk, compilerConfiguration, getLanguageLevel(chunk.representativeTarget().getModule()));
   }
-  
+
   private static int getModuleBytecodeTarget(CompileContext context, ModuleChunk chunk, JpsJavaCompilerConfiguration compilerConfiguration, int languageLevel) {
     int bytecodeTarget = 0;
     for (JpsModule module : chunk.getModules()) {
@@ -1263,6 +1250,10 @@ public class JavaBuilder extends ModuleLevelBuilder {
     }
   }
 
+  @Override
+  public long getExpectedBuildTime() {
+    return 100;
+  }
 
   private static final Key<Semaphore> COUNTER_KEY = Key.create("_async_task_counter_");
 }

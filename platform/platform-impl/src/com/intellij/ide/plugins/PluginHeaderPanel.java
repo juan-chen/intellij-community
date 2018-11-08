@@ -164,6 +164,7 @@ public class PluginHeaderPanel {
   private void createUIComponents() {
     myInstallButton = new RoundedActionButton(2, 8) {
 
+      @Override
       @NotNull
       protected Color getButtonForeground() {
         switch (myActionId) {
@@ -175,6 +176,7 @@ public class PluginHeaderPanel {
         return new JBColor(Gray._80, Gray._60);
       }
 
+      @Override
       @NotNull
       protected Paint getBackgroundPaint() {
         switch (myActionId) {
@@ -183,12 +185,13 @@ public class PluginHeaderPanel {
           case RESTART:
           case UNINSTALL:
             return UIUtil.isUnderDarcula()
-                   ? ColorUtil.mix(UIManager.getColor("Button.darcula.startColor"), UIManager.getColor("Button.darcula.endColor"), 0.5)
+                   ? ColorUtil.mix(UIManager.getColor("Button.startBackground"), UIManager.getColor("Button.endBackground"), 0.5)
                    : Gray._240;
         }
         return Gray._238;
       }
 
+      @Override
       @NotNull
       protected Paint getBackgroundBorderPaint() {
         switch (myActionId) {

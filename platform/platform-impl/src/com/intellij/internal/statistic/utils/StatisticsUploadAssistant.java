@@ -25,9 +25,10 @@ import com.intellij.internal.statistic.service.fus.FUStatisticsService;
 import com.intellij.util.Time;
 
 public class StatisticsUploadAssistant {
+  private static final String IDEA_SUPPRESS_REPORT_STATISTICS = "idea.suppress.statistics.report";
   public static final Object LOCK = new Object();
 
-  private StatisticsUploadAssistant(){};
+  private StatisticsUploadAssistant(){}
 
   public static boolean isShouldShowNotification() {
     return UsageStatisticsPersistenceComponent.getInstance().isShowNotification() &&
@@ -48,17 +49,12 @@ public class StatisticsUploadAssistant {
     return Math.abs(timeDelta) > settings.getPeriod().getMillis();
   }
 
-  public static boolean isTimeToSendEventLog() {
-    final long timeDelta = System.currentTimeMillis() - UsageStatisticsPersistenceComponent.getInstance().getEventLogLastTimeSent();
-    return Math.abs(timeDelta) > UsageStatisticsPersistenceComponent.getInstance().getPeriod().getMillis();
-  }
-
   public static boolean isSendAllowed() {
     return isSendAllowed(UsageStatisticsPersistenceComponent.getInstance());
   }
 
   public static boolean isSendAllowed(final SentUsagesPersistence settings) {
-    return settings != null && settings.isAllowed();
+    return settings != null && settings.isAllowed() && !Boolean.getBoolean(IDEA_SUPPRESS_REPORT_STATISTICS);
   }
 
   public static void updateSentTime() {

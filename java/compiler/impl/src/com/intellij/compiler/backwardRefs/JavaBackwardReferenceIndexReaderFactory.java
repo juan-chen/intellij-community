@@ -10,25 +10,23 @@ import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileWithId;
 import com.intellij.psi.search.GlobalSearchScope;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.containers.Queue;
 import com.intellij.util.indexing.InvertedIndexUtil;
 import com.intellij.util.indexing.StorageException;
-import com.intellij.util.indexing.ValueContainer;
 import gnu.trove.THashSet;
 import gnu.trove.TIntHashSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.jps.backwardRefs.JavaCompilerBackwardReferenceIndex;
 import org.jetbrains.jps.backwardRefs.CompilerRef;
+import org.jetbrains.jps.backwardRefs.JavaCompilerBackwardReferenceIndex;
 import org.jetbrains.jps.backwardRefs.SignatureData;
-import org.jetbrains.jps.backwardRefs.index.JavaCompilerIndices;
 import org.jetbrains.jps.backwardRefs.index.CompilerReferenceIndex;
+import org.jetbrains.jps.backwardRefs.index.JavaCompilerIndices;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
-
-import static java.util.stream.Collectors.toList;
 
 public class JavaBackwardReferenceIndexReaderFactory implements CompilerReferenceReaderFactory<JavaBackwardReferenceIndexReaderFactory.BackwardReferenceReader> {
   public static final JavaBackwardReferenceIndexReaderFactory INSTANCE = new JavaBackwardReferenceIndexReaderFactory();
@@ -90,15 +88,12 @@ public class JavaBackwardReferenceIndexReaderFactory implements CompilerReferenc
     public TIntHashSet findFileIdsWithImplicitToString(@NotNull CompilerRef ref) throws StorageException {
       TIntHashSet result = new TIntHashSet();
       myIndex.get(JavaCompilerIndices.IMPLICIT_TO_STRING).getData(ref).forEach(
-        new ValueContainer.ContainerAction<Void>() {
-          @Override
-          public boolean perform(int id, Void value) {
-            final VirtualFile file = findFile(id);
-            if (file != null) {
-              result.add(((VirtualFileWithId)file).getId());
-            }
-            return true;
+        (id, value) -> {
+          final VirtualFile file = findFile(id);
+          if (file != null) {
+            result.add(((VirtualFileWithId)file).getId());
           }
+          return true;
         });
       return result;
     }
@@ -123,7 +118,7 @@ public class JavaBackwardReferenceIndexReaderFactory implements CompilerReferenc
 
       Map<VirtualFile, SearchId[]> candidatesPerFile = new HashMap<>();
       myIndex.get(JavaCompilerIndices.BACK_HIERARCHY).getData(searchElement).forEach((fileId, defs) -> {
-        final List<CompilerRef> requiredCandidates = defs.stream().filter(requiredCompilerRefClass::isInstance).collect(toList());
+        final List<CompilerRef> requiredCandidates = ContainerUtil.filter(defs, requiredCompilerRefClass::isInstance);
         if (requiredCandidates.isEmpty()) return true;
         final VirtualFile file = findFile(fileId);
         if (file != null && effectiveSearchScope.contains(file)) {
@@ -300,19 +295,16 @@ public class JavaBackwardReferenceIndexReaderFactory implements CompilerReferenc
     @NotNull
     private DefCount getDefinitionCount(CompilerRef.NamedCompilerRef def) throws StorageException {
       DefCount[] result = new DefCount[]{DefCount.NONE};
-      myIndex.get(JavaCompilerIndices.BACK_CLASS_DEF).getData(def).forEach(new ValueContainer.ContainerAction<Void>() {
-        @Override
-        public boolean perform(int id, Void value) {
-          if (result[0] == DefCount.NONE) {
-            result[0] = DefCount.ONE;
-            return true;
-          }
-          if (result[0] == DefCount.ONE) {
-            result[0] = DefCount.MANY;
-            return true;
-          }
-          return false;
+      myIndex.get(JavaCompilerIndices.BACK_CLASS_DEF).getData(def).forEach((id, value) -> {
+        if (result[0] == DefCount.NONE) {
+          result[0] = DefCount.ONE;
+          return true;
         }
+        if (result[0] == DefCount.ONE) {
+          result[0] = DefCount.MANY;
+          return true;
+        }
+        return false;
       });
       return result[0];
     }

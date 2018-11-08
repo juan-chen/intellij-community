@@ -38,7 +38,6 @@ import java.util.*;
 
 /**
  * @author Denis Zhdanov
- * @since 2/15/12 11:32 AM
  */
 @Order(ExternalSystemConstants.BUILTIN_LIBRARY_DATA_SERVICE_ORDER)
 public class LibraryDataService extends AbstractProjectDataService<LibraryData, Library> {
@@ -234,6 +233,10 @@ public class LibraryDataService extends AbstractProjectDataService<LibraryData, 
       HashSet<String> toAddPerType = ContainerUtilRt.newHashSet(externalLibrary.getPaths(pathType));
       toAdd.put(ideType, toAddPerType);
 
+      // do not remove attached or manually added sources/javadocs if nothing to add
+      if(pathType != LibraryPathType.BINARY && toAddPerType.isEmpty()) {
+        continue;
+      }
       HashSet<String> toRemovePerType = ContainerUtilRt.newHashSet();
       toRemove.put(ideType, toRemovePerType);
 

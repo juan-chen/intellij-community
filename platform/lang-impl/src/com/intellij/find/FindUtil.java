@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 
 package com.intellij.find;
 
@@ -64,12 +50,12 @@ import com.intellij.usages.*;
 import com.intellij.usages.impl.UsageViewImpl;
 import com.intellij.util.Consumer;
 import com.intellij.util.Function;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import java.awt.event.ActionEvent;
 import java.util.*;
 import java.util.stream.Stream;
 
@@ -90,57 +76,28 @@ public class FindUtil {
     if (editor != null) {
       String s = editor.getSelectionModel().getSelectedText();
       if (s != null && s.length() < 10000) {
-        FindModel.initStringToFindNoMultiline(findModel, s);
+        FindModel.initStringToFind(findModel, s);
       }
     }
-  }
-
-  private static boolean isMultilineSelection(Editor editor) {
-    SelectionModel selectionModel = editor != null ? editor.getSelectionModel() : null;
-    if (selectionModel != null) {
-      String selectedText = selectionModel.getSelectedText();
-      if (selectedText != null && selectedText.contains("\n")) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  private static boolean isWholeLineSelection(Editor editor) {
-    SelectionModel selectionModel = editor != null ? editor.getSelectionModel() : null;
-    if (selectionModel != null) {
-      String selectedText = selectionModel.getSelectedText();
-      final Document document = editor.getDocument();
-      final int line = document.getLineNumber(selectionModel.getSelectionStart());
-      final String lineText = document.getText(new TextRange(document.getLineStartOffset(line), document.getLineEndOffset(line)));
-      if (lineText.trim().equals(selectedText)) {
-        return true;
-      }
-    }
-    return false;
   }
 
   public static void configureFindModel(boolean replace, @Nullable Editor editor, FindModel model, boolean firstSearch) {
     boolean isGlobal = true;
-    String stringToFind = null;
+    String stringToFind = firstSearch ? "" : model.getStringToFind();
     final SelectionModel selectionModel = editor != null ? editor.getSelectionModel() : null;
     String selectedText = selectionModel != null ? selectionModel.getSelectedText() : null;
     if (!StringUtil.isEmpty(selectedText)) {
-      if (replace && (isMultilineSelection(editor) || isWholeLineSelection(editor))) {
-        isGlobal = false;
-        stringToFind = model.getStringToFind();
-      } else if (isMultilineSelection(editor)) {
-        model.setMultiline(true);
-      }
-      if (stringToFind == null) {
-        stringToFind = selectedText;
-      }
-    }
-    else {
-      stringToFind = firstSearch ? "" : model.getStringToFind();
+      stringToFind = selectedText;
     }
     model.setReplaceState(replace);
+    boolean multiline = stringToFind.contains("\n");
+    if (replace && multiline) {
+      isGlobal = false;
+      stringToFind = "";
+      multiline = false;
+    }
     model.setStringToFind(stringToFind);
+    model.setMultiline(multiline);
     model.setGlobal(isGlobal);
     model.setPromptOnReplace(false);
   }
@@ -293,9 +250,14 @@ public class FindUtil {
 
   @Nullable
   public static List<Usage> findAll(@NotNull Project project, @NotNull Editor editor, @NotNull FindModel findModel) {
-    final Document document = editor.getDocument();
-    final PsiFile psiFile = PsiDocumentManager.getInstance(project).getPsiFile(document);
-    if (psiFile == null) return null;
+    return findAll(project, PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument()), findModel);
+  }
+
+  @Nullable
+  private static List<Usage> findAll(@NotNull Project project, @Nullable PsiFile psiFile, @NotNull FindModel findModel) {
+    if (psiFile == null || project.isDisposed()) return null;
+    Document document = PsiDocumentManager.getInstance(project).getDocument(psiFile);
+    if (document == null) return null;
 
     CharSequence text = document.getCharsSequence();
     int textLength = document.getTextLength();
@@ -303,7 +265,7 @@ public class FindUtil {
     findModel.setForward(true); // when find all there is no diff in direction
 
     int offset = 0;
-    VirtualFile virtualFile = getVirtualFile(editor);
+    VirtualFile virtualFile = psiFile.getVirtualFile();
 
     final List<Usage> usages = new ArrayList<>();
     while (offset < textLength) {
@@ -324,11 +286,27 @@ public class FindUtil {
   }
 
   public static void findAllAndShow(@NotNull Project project, @NotNull Editor editor, @NotNull FindModel findModel) {
-    List<Usage> usages = findAll(project, editor, findModel);
+    findAllAndShow(project, PsiDocumentManager.getInstance(project).getPsiFile(editor.getDocument()), findModel);
+  }
+
+  private static void findAllAndShow(@NotNull Project project, @Nullable PsiFile psiFile, @NotNull FindModel findModel) {
+    List<Usage> usages = findAll(project, psiFile, findModel);
     if (usages == null) return;
     final UsageTarget[] usageTargets = {new FindInProjectUtil.StringUsageTarget(project, findModel)};
     final UsageViewPresentation usageViewPresentation = FindInProjectUtil.setupViewPresentation(false, findModel);
-    UsageViewManager.getInstance(project).showUsages(usageTargets, usages.toArray(Usage.EMPTY_ARRAY), usageViewPresentation);
+    UsageView view =
+      UsageViewManager.getInstance(project).showUsages(usageTargets, usages.toArray(Usage.EMPTY_ARRAY), usageViewPresentation);
+    view.setRerunAction(new AbstractAction() {
+      @Override
+      public void actionPerformed(ActionEvent e) {
+        findAllAndShow(project, psiFile, findModel);
+      }
+
+      @Override
+      public boolean isEnabled() {
+        return !project.isDisposed() && psiFile.isValid();
+      }
+    });
   }
 
   public static void searchBack(Project project, FileEditor fileEditor, @Nullable DataContext dataContext) {
@@ -759,7 +737,7 @@ public class FindUtil {
     }
 
     @Override
-    public void caretPositionChanged(CaretEvent e) {
+    public void caretPositionChanged(@NotNull CaretEvent e) {
       removeAll();
     }
 
@@ -817,7 +795,7 @@ public class FindUtil {
       }
       CaretListener listener = new CaretListener() {
         @Override
-        public void caretPositionChanged(CaretEvent e) {
+        public void caretPositionChanged(@NotNull CaretEvent e) {
           editor.putUserData(KEY, null);
           editor.getCaretModel().removeCaretListener(this);
         }
@@ -839,7 +817,7 @@ public class FindUtil {
                                     FindResult result,
                                     @NotNull String stringToReplace,
                                     boolean reallyReplace,
-                                    List<Pair<TextRange, String>> rangesToChange) {
+                                    List<? super Pair<TextRange, String>> rangesToChange) {
     final int startOffset = result.getStartOffset();
     final int endOffset = result.getEndOffset();
 
@@ -968,7 +946,7 @@ public class FindUtil {
    *                                     if negative, carets will be positioned at selection ends
    */
   public static void selectSearchResultsInEditor(@NotNull Editor editor,
-                                                 @NotNull Iterator<FindResult> resultIterator,
+                                                 @NotNull Iterator<? extends FindResult> resultIterator,
                                                  int caretShiftFromSelectionStart) {
     if (!editor.getCaretModel().supportsMultipleCarets()) {
       return;

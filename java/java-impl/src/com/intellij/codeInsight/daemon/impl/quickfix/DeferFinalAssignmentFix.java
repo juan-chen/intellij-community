@@ -107,7 +107,7 @@ public class DeferFinalAssignmentFix implements IntentionAction {
     List<PsiReferenceExpression> outerReferences = new ArrayList<>();
     collectReferences(outerCodeBlock, variable, outerReferences);
 
-    PsiElementFactory factory = JavaPsiFacade.getInstance(variable.getProject()).getElementFactory();
+    PsiElementFactory factory = JavaPsiFacade.getElementFactory(variable.getProject());
     Project project = variable.getProject();
     String tempName = suggestNewName(project, variable);
     PsiDeclarationStatement tempVariableDeclaration = factory.createVariableDeclarationStatement(tempName, variable.getType(), null);
@@ -182,7 +182,7 @@ public class DeferFinalAssignmentFix implements IntentionAction {
 
   }
 
-  private static void collectReferences(PsiElement context, final PsiVariable variable, final List<PsiReferenceExpression> references) {
+  private static void collectReferences(PsiElement context, final PsiVariable variable, final List<? super PsiReferenceExpression> references) {
     context.accept(new JavaRecursiveElementWalkingVisitor() {
       @Override public void visitReferenceExpression(PsiReferenceExpression expression) {
         if (expression.resolve() == variable) references.add(expression);

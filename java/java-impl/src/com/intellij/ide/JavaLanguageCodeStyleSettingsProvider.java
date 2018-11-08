@@ -15,10 +15,7 @@
  */
 package com.intellij.ide;
 
-import com.intellij.application.options.CodeStyle;
-import com.intellij.application.options.CodeStyleBean;
-import com.intellij.application.options.IndentOptionsEditor;
-import com.intellij.application.options.JavaIndentOptionsEditor;
+import com.intellij.application.options.*;
 import com.intellij.lang.Language;
 import com.intellij.lang.java.JavaLanguage;
 import com.intellij.openapi.application.ApplicationBundle;
@@ -39,6 +36,27 @@ import static com.intellij.application.options.JavaDocFormattingPanel.*;
  * @author rvishnyakov
  */
 public class JavaLanguageCodeStyleSettingsProvider extends LanguageCodeStyleSettingsProvider {
+  @NotNull
+  @Override
+  public CodeStyleConfigurable createConfigurable(@NotNull CodeStyleSettings settings, @NotNull CodeStyleSettings modelSettings) {
+    return new CodeStyleAbstractConfigurable(settings, modelSettings, "Java") {
+      @Override
+      protected CodeStyleAbstractPanel createPanel(final CodeStyleSettings settings) {
+        return new JavaCodeStyleMainPanel(getCurrentSettings(), settings);
+      }
+      @Override
+      public String getHelpTopic() {
+        return "reference.settingsdialog.codestyle.java";
+      }
+    };
+  }
+
+  @Nullable
+  @Override
+  public CustomCodeStyleSettings createCustomSettings(CodeStyleSettings settings) {
+    return new JavaCodeStyleSettings(settings);
+  }
+
   @NotNull
   @Override
   public Language getLanguage() {
@@ -77,6 +95,8 @@ public class JavaLanguageCodeStyleSettingsProvider extends LanguageCodeStyleSett
       groupName = CodeStyleSettingsCustomizable.SPACES_OTHER;
       consumer.showCustomOption(JavaCodeStyleSettings.class, "SPACE_BEFORE_COLON_IN_FOREACH", ApplicationBundle.message(
         "checkbox.spaces.before.colon.in.foreach"), groupName);
+      consumer.showCustomOption(JavaCodeStyleSettings.class, "SPACE_INSIDE_ONE_LINE_ENUM_BRACES", ApplicationBundle.message(
+        "checkbox.spaces.inside.one.line.enum"), groupName);
     }
     else if (settingsType == SettingsType.WRAPPING_AND_BRACES_SETTINGS) {
       consumer.showStandardOptions("RIGHT_MARGIN",
@@ -261,12 +281,6 @@ public class JavaLanguageCodeStyleSettingsProvider extends LanguageCodeStyleSett
     return file;
   }
 
-  @Override
-  public CommonCodeStyleSettings getDefaultCommonSettings() {
-    CommonCodeStyleSettings settings = new CommonCodeStyleSettings(JavaLanguage.INSTANCE);
-    settings.initIndentOptions();
-    return settings;
-  }
 
   @Override
   public IndentOptionsEditor getIndentOptionsEditor() {
@@ -276,29 +290,39 @@ public class JavaLanguageCodeStyleSettingsProvider extends LanguageCodeStyleSett
 
   @Override
   @NotNull
-  public DocCommentSettings getDocCommentSettings(@NotNull PsiFile file) {
-    if (file.isValid()) {
-      return new DocCommentSettings() {
-        private final JavaCodeStyleSettings mySettings =
-          CodeStyle.getCustomSettings(file, JavaCodeStyleSettings.class);
+  public DocCommentSettings getDocCommentSettings(@NotNull CodeStyleSettings rootSettings) {
+    return new DocCommentSettings() {
+      private final JavaCodeStyleSettings mySettings =
+        rootSettings.getCustomSettings(JavaCodeStyleSettings.class);
 
-        @Override
-        public boolean isDocFormattingEnabled() {
-          return mySettings.ENABLE_JAVADOC_FORMATTING;
-        }
+      @Override
+      public boolean isDocFormattingEnabled() {
+        return mySettings.ENABLE_JAVADOC_FORMATTING;
+      }
 
-        @Override
-        public void setDocFormattingEnabled(boolean formattingEnabled) {
-          mySettings.ENABLE_JAVADOC_FORMATTING = formattingEnabled;
-        }
+      @Override
+      public void setDocFormattingEnabled(boolean formattingEnabled) {
+        mySettings.ENABLE_JAVADOC_FORMATTING = formattingEnabled;
+      }
 
-        @Override
-        public boolean isLeadingAsteriskEnabled() {
-          return mySettings.JD_LEADING_ASTERISKS_ARE_ENABLED;
-        }
-      };
-    }
-    return super.getDocCommentSettings(file);
+      @Override
+      public boolean isLeadingAsteriskEnabled() {
+        return mySettings.JD_LEADING_ASTERISKS_ARE_ENABLED;
+      }
+
+      @Override
+      public boolean isRemoveEmptyTags() {
+        return mySettings.JD_KEEP_EMPTY_EXCEPTION || mySettings.JD_KEEP_EMPTY_PARAMETER || mySettings.JD_KEEP_EMPTY_RETURN;
+      }
+
+      @Override
+      public void setRemoveEmptyTags(boolean removeEmptyTags) {
+        mySettings.JD_KEEP_EMPTY_RETURN = !removeEmptyTags;
+        mySettings.JD_KEEP_EMPTY_PARAMETER = !removeEmptyTags;
+        mySettings.JD_KEEP_EMPTY_EXCEPTION = !removeEmptyTags;
+      }
+    };
+
   }
 
   @Nullable

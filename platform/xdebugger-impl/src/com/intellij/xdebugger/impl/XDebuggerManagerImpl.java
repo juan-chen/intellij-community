@@ -91,7 +91,7 @@ public class XDebuggerManagerImpl extends XDebuggerManager implements Persistent
         updateExecutionPoint(file, false);
       }
     });
-    myBreakpointManager.addBreakpointListener(new XBreakpointListener<XBreakpoint<?>>() {
+    messageBusConnection.subscribe(XBreakpointListener.TOPIC, new XBreakpointListener<XBreakpoint<?>>() {
       @Override
       public void breakpointChanged(@NotNull XBreakpoint<?> breakpoint) {
         if (!(breakpoint instanceof XLineBreakpoint)) {
@@ -140,6 +140,10 @@ public class XDebuggerManagerImpl extends XDebuggerManager implements Persistent
     if (file.equals(myExecutionPointHighlighter.getCurrentFile())) {
       myExecutionPointHighlighter.update(navigate);
     }
+  }
+
+  void updateExecutionPoint(GutterIconRenderer renderer) {
+    myExecutionPointHighlighter.updateGutterIcon(renderer);
   }
 
   @Override

@@ -118,7 +118,7 @@ public class OutputParser{
   }
 
 
-  protected final void processTag(char tagName, final String tagValue, final int priority) {
+  protected final void processTag(char tagName, final String tagValue, @AntMessage.Priority int priority) {
     if (LOG.isDebugEnabled()) {
       LOG.debug(String.valueOf(tagName) + priority + "=" + tagValue);
     }
@@ -139,7 +139,7 @@ public class OutputParser{
     }
 
     if (IdeaAntLogger2.MESSAGE == tagName) {
-      myMessageView.outputMessage(tagValue, fixPriority(priority));
+      myMessageView.outputMessage(tagValue, priority);
     }
     else if (IdeaAntLogger2.TARGET == tagName) {
       myMessageView.startTarget(tagValue);
@@ -170,7 +170,8 @@ public class OutputParser{
     }
   }
 
-  private static int fixPriority(int priority) {
+  @AntMessage.Priority
+  static int fixPriority(int priority) {
     if (priority == AntBuildMessageView.PRIORITY_ERR ||
         priority == AntBuildMessageView.PRIORITY_WARN ||
         priority == AntBuildMessageView.PRIORITY_INFO ||
@@ -191,6 +192,7 @@ public class OutputParser{
     com.intellij.compiler.OutputParser.Callback callback = new com.intellij.compiler.OutputParser.Callback() {
       private int myIndex = -1;
 
+      @Override
       @Nullable
       public String getCurrentLine() {
         if (myIndex >= javacMessages.size()) {
@@ -199,6 +201,7 @@ public class OutputParser{
         return javacMessages.get(myIndex);
       }
 
+      @Override
       public String getNextLine() {
         final int size = javacMessages.size();
         final int next = Math.min(myIndex + 1, javacMessages.size());
@@ -214,6 +217,7 @@ public class OutputParser{
         myIndex--;
       }
 
+      @Override
       public void message(final CompilerMessageCategory category,
                           final String message,
                           final String url,
@@ -236,12 +240,15 @@ public class OutputParser{
         });
       }
 
+      @Override
       public void setProgressText(String text) {
       }
 
+      @Override
       public void fileProcessed(String path) {
       }
 
+      @Override
       public void fileGenerated(String path) {
       }
     };

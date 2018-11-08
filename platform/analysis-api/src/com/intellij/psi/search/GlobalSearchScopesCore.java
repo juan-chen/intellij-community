@@ -18,14 +18,10 @@ import com.intellij.psi.PsiManager;
 import com.intellij.psi.search.scope.packageSet.*;
 import com.intellij.util.ObjectUtils;
 import com.intellij.util.containers.ContainerUtil;
-import java.util.HashSet;
 import org.jetbrains.annotations.NotNull;
 
-import javax.swing.Icon;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.Objects;
-import java.util.Set;
+import javax.swing.*;
+import java.util.*;
 
 public class GlobalSearchScopesCore {
   @NotNull
@@ -109,12 +105,6 @@ public class GlobalSearchScopesCore {
     }
 
     @Override
-    public int compare(@NotNull VirtualFile file1, @NotNull VirtualFile file2) {
-      return 0;
-
-    }
-
-    @Override
     public boolean isSearchInModuleContent(@NotNull Module aModule) {
       return true; //TODO (optimization?)
     }
@@ -122,6 +112,27 @@ public class GlobalSearchScopesCore {
     @Override
     public boolean isSearchInLibraries() {
       return true; //TODO (optimization?)
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) return true;
+      if (o == null || getClass() != o.getClass()) return false;
+
+      FilterScopeAdapter adapter = (FilterScopeAdapter)o;
+
+      if (!mySet.equals(adapter.mySet)) return false;
+      if (!myManager.equals(adapter.myManager)) return false;
+
+      return true;
+    }
+
+    @Override
+    public int calcHashCode() {
+      int result = super.calcHashCode();
+      result = 31 * result + mySet.hashCode();
+      result = 31 * result + myManager.hashCode();
+      return result;
     }
   }
 
@@ -139,11 +150,6 @@ public class GlobalSearchScopesCore {
     }
 
     @Override
-    public int compare(@NotNull VirtualFile file1, @NotNull VirtualFile file2) {
-      return 0;
-    }
-
-    @Override
     public boolean isSearchInModuleContent(@NotNull Module aModule) {
       return true;
     }
@@ -158,6 +164,7 @@ public class GlobalSearchScopesCore {
       return false;
     }
 
+    @NotNull
     @Override
     public Collection<UnloadedModuleDescription> getUnloadedModulesBelongingToScope() {
       return ModuleManager.getInstance(ObjectUtils.assertNotNull(getProject())).getUnloadedModuleDescriptions();
@@ -178,11 +185,6 @@ public class GlobalSearchScopesCore {
     @Override
     public boolean contains(@NotNull VirtualFile file) {
       return TestSourcesFilter.isTestSources(file, ObjectUtils.assertNotNull(getProject()));
-    }
-
-    @Override
-    public int compare(@NotNull VirtualFile file1, @NotNull VirtualFile file2) {
-      return 0;
     }
 
     @Override
@@ -243,11 +245,6 @@ public class GlobalSearchScopesCore {
     }
 
     @Override
-    public int compare(@NotNull VirtualFile file1, @NotNull VirtualFile file2) {
-      return 0;
-    }
-
-    @Override
     public boolean isSearchInModuleContent(@NotNull Module aModule) {
       return true;
     }
@@ -264,7 +261,7 @@ public class GlobalSearchScopesCore {
     }
 
     @Override
-    public int hashCode() {
+    public int calcHashCode() {
       return myDirectory.hashCode() *31 + (myWithSubdirectories?1:0);
     }
 
@@ -341,11 +338,6 @@ public class GlobalSearchScopesCore {
     }
 
     @Override
-    public int compare(@NotNull VirtualFile file1, @NotNull VirtualFile file2) {
-      return 0;
-    }
-
-    @Override
     public boolean isSearchInModuleContent(@NotNull Module aModule) {
       return true;
     }
@@ -362,7 +354,7 @@ public class GlobalSearchScopesCore {
     }
 
     @Override
-    public int hashCode() {
+    public int calcHashCode() {
       int result = myDirectories.hashCode();
       result = result * 31 + myDirectoriesWithSubdirectories.hashCode();
       return result;

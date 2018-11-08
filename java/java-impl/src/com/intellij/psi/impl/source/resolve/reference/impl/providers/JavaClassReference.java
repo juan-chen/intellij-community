@@ -1,5 +1,5 @@
 /*
- * Copyright 2000-2015 JetBrains s.r.o.
+ * Copyright 2000-2018 JetBrains s.r.o.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -168,7 +168,7 @@ public class JavaClassReference extends GenericReference implements PsiJavaRefer
   }
 
   @Override
-  public boolean isReferenceTo(PsiElement element) {
+  public boolean isReferenceTo(@NotNull PsiElement element) {
     return (element instanceof PsiMember || element instanceof PsiPackage) && super.isReferenceTo(element);
   }
 
@@ -190,7 +190,7 @@ public class JavaClassReference extends GenericReference implements PsiJavaRefer
   }
 
   @Override
-  public PsiElement handleElementRename(String newElementName) throws IncorrectOperationException {
+  public PsiElement handleElementRename(@NotNull String newElementName) throws IncorrectOperationException {
     final ElementManipulator<PsiElement> manipulator = getManipulator(getElement());
     final PsiElement element = manipulator.handleContentChange(getElement(), getRangeInElement(), newElementName);
     myRange = new TextRange(getRangeInElement().getStartOffset(), getRangeInElement().getStartOffset() + newElementName.length());
@@ -472,7 +472,7 @@ public class JavaClassReference extends GenericReference implements PsiJavaRefer
         }
       }
     }
-    if (resolveResult instanceof PsiPackageImpl && !((PsiPackageImpl)resolveResult).mayHaveContentInScope(getElement().getResolveScope())) {
+    if (resolveResult instanceof PsiPackageImpl && !((PsiPackageImpl)resolveResult).mayHaveContentInScope(scope)) {
       return JavaResolveResult.EMPTY;
     }
     return resolveResult != null

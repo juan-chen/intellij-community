@@ -30,11 +30,11 @@ import com.intellij.psi.impl.source.tree.ChildRole;
 import com.intellij.psi.infos.ClassCandidateInfo;
 import com.intellij.psi.javadoc.PsiDocComment;
 import com.intellij.psi.scope.PsiScopeProcessor;
+import com.intellij.psi.stub.JavaStubImplUtil;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
 import com.intellij.psi.util.PsiModificationTracker;
 import com.intellij.ui.RowIcon;
-import com.intellij.util.ArrayUtil;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.PlatformIcons;
 import org.jetbrains.annotations.NotNull;
@@ -56,6 +56,7 @@ public class PsiEnumConstantImpl extends JavaStubPsiElement<PsiFieldStub> implem
     super(node);
   }
 
+  @Override
   public String toString() {
     return "PsiEnumConstant:" + getName();
   }
@@ -124,7 +125,7 @@ public class PsiEnumConstantImpl extends JavaStubPsiElement<PsiFieldStub> implem
   @Override
   @NotNull
   public PsiType getType() {
-    return JavaPsiFacade.getInstance(getProject()).getElementFactory().createType(getContainingClass());
+    return JavaPsiFacade.getElementFactory(getProject()).createType(getContainingClass());
   }
 
   @Override
@@ -196,7 +197,7 @@ public class PsiEnumConstantImpl extends JavaStubPsiElement<PsiFieldStub> implem
 
   @Override
   public boolean isDeprecated() {
-    return PsiFieldImpl.isFieldDeprecated(this, getGreenStub());
+    return JavaStubImplUtil.isMemberDeprecated(this, getGreenStub());
   }
 
   @Override
@@ -241,19 +242,13 @@ public class PsiEnumConstantImpl extends JavaStubPsiElement<PsiFieldStub> implem
     }
 
     @Override
-    public PsiElement handleElementRename(String newElementName) throws IncorrectOperationException {
+    public PsiElement handleElementRename(@NotNull String newElementName) throws IncorrectOperationException {
       return getElement();
     }
 
     @Override
     public PsiElement bindToElement(@NotNull PsiElement element) throws IncorrectOperationException {
       throw new IncorrectOperationException("Invalid operation");
-    }
-
-    @Override
-    @NotNull
-    public Object[] getVariants() {
-      return ArrayUtil.EMPTY_OBJECT_ARRAY;
     }
 
     @Override
@@ -293,7 +288,7 @@ public class PsiEnumConstantImpl extends JavaStubPsiElement<PsiFieldStub> implem
     }
 
     @Override
-    public boolean isReferenceTo(PsiElement element) {
+    public boolean isReferenceTo(@NotNull PsiElement element) {
       if (element instanceof PsiClass && element == getContainingClass() && ((PsiClass)element).getConstructors().length == 0) {
         return true;
       }

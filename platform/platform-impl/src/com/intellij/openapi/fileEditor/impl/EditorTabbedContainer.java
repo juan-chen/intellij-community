@@ -117,7 +117,7 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
       .setPopupGroup(
         () -> (ActionGroup)CustomActionsSchema.getInstance().getCorrectedAction(IdeActions.GROUP_EDITOR_TAB_POPUP), ActionPlaces.EDITOR_TAB_POPUP, false)
       .addTabMouseListener(new TabMouseListener()).getPresentation()
-      .setTabDraggingEnabled(true).setUiDecorator(() -> new UiDecorator.UiDecoration(null, new Insets(TabsUtil.TAB_VERTICAL_PADDING, 8, TabsUtil.TAB_VERTICAL_PADDING, 8)))
+      .setTabDraggingEnabled(true).setUiDecorator(() -> new UiDecorator.UiDecoration(null, JBUI.insets(2, 8)))
       .setTabLabelActionsMouseDeadzone(TimedDeadzone.NULL).setGhostsAlwaysVisible(true).setTabLabelActionsAutoHide(false)
       .setActiveTabFillIn(EditorColorsManager.getInstance().getGlobalScheme().getDefaultBackground()).setPaintFocus(false).getJBTabs()
       .addListener(new TabsListener() {
@@ -154,8 +154,7 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
       public void mouseClicked(MouseEvent e) {
         if (myTabs.findInfo(e) != null || isFloating()) return;
         if (!e.isPopupTrigger() && SwingUtilities.isLeftMouseButton(e) && e.getClickCount() == 2) {
-          final ActionManager mgr = ActionManager.getInstance();
-          mgr.tryToExecute(mgr.getAction("HideAllWindows"), e, null, ActionPlaces.UNKNOWN, true);
+          doHideAll(e);
         }
       }
     });
@@ -435,15 +434,15 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
     }
 
     @Override
-    public void update(final AnActionEvent e) {
-      e.getPresentation().setIcon(AllIcons.Actions.CloseNew);
-      e.getPresentation().setHoveredIcon(AllIcons.Actions.CloseNewHovered);
+    public void update(@NotNull final AnActionEvent e) {
+      e.getPresentation().setIcon(AllIcons.Actions.Close);
+      e.getPresentation().setHoveredIcon(AllIcons.Actions.CloseHovered);
       e.getPresentation().setVisible(UISettings.getInstance().getShowCloseButton());
       e.getPresentation().setText("Close. Alt-click to close others.");
     }
 
     @Override
-    public void actionPerformed(final AnActionEvent e) {
+    public void actionPerformed(@NotNull final AnActionEvent e) {
       final FileEditorManagerEx mgr = FileEditorManagerEx.getInstanceEx(myProject);
       EditorWindow window;
       if (ActionPlaces.EDITOR_TAB.equals(e.getPlace())) {
@@ -468,7 +467,7 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
 
   private final class MyDataProvider implements DataProvider {
     @Override
-    public Object getData(@NonNls final String dataId) {
+    public Object getData(@NotNull @NonNls final String dataId) {
       if (CommonDataKeys.PROJECT.is(dataId)) {
         return myProject;
       }
@@ -502,19 +501,7 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
   public void close() {
     TabInfo selected = myTabs.getTargetInfo();
     if (selected == null) return;
-
-    final VirtualFile file = (VirtualFile)selected.getObject();
-    final FileEditorManagerEx mgr = FileEditorManagerEx.getInstanceEx(myProject);
-
-    mgr
-      .getActiveWindow()
-      .onSuccess(wnd -> {
-        if (wnd != null) {
-          if (wnd.findFileComposite(file) != null) {
-            mgr.closeFile(file, wnd);
-          }
-        }
-      });
+    FileEditorManagerEx.getInstanceEx(myProject).closeFile((VirtualFile)selected.getObject(), myWindow);
   }
 
   private boolean isFloating() {
@@ -555,8 +542,7 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
           myActionClickCount++;
         }
         if (myActionClickCount > 1 && !isFloating()) {
-          final ActionManager mgr = ActionManager.getInstance();
-          mgr.tryToExecute(mgr.getAction("HideAllWindows"), e, null, ActionPlaces.UNKNOWN, true);
+          doHideAll(e);
         }
       }
     }
@@ -573,13 +559,19 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
     }
   }
 
+  public void doHideAll(MouseEvent e) {
+    if (!Registry.is("editor.maximize.on.double.click")) return;
+    final ActionManager mgr = ActionManager.getInstance();
+    mgr.tryToExecute(mgr.getAction("HideAllWindows"), e, null, ActionPlaces.UNKNOWN, true);
+  }
+
   class MyDragOutDelegate implements TabInfo.DragOutDelegate {
 
     private VirtualFile myFile;
     private DragSession mySession;
 
     @Override
-    public void dragOutStarted(MouseEvent mouseEvent, TabInfo info) {
+    public void dragOutStarted(@NotNull MouseEvent mouseEvent, @NotNull TabInfo info) {
       final TabInfo previousSelection = info.getPreviousSelection();
       final Image img = JBTabsImpl.getComponentImage(info);
       info.setHidden(true);
@@ -598,12 +590,12 @@ public final class EditorTabbedContainer implements Disposable, CloseAction.Clos
     }
 
     @Override
-    public void processDragOut(MouseEvent event, TabInfo source) {
+    public void processDragOut(@NotNull MouseEvent event, @NotNull TabInfo source) {
       mySession.process(event);
     }
 
     @Override
-    public void dragOutFinished(MouseEvent event, TabInfo source) {
+    public void dragOutFinished(@NotNull MouseEvent event, TabInfo source) {
       boolean copy = UIUtil.isControlKeyDown(event) || mySession.getResponse(event) == DockContainer.ContentResponse.ACCEPT_COPY;
       if (!copy) {
         myFile.putUserData(FileEditorManagerImpl.CLOSING_TO_REOPEN, Boolean.TRUE);

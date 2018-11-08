@@ -26,6 +26,7 @@ import org.jetbrains.annotations.Nullable;
 public abstract class AbstractIndentParser implements PsiParser {
   protected IndentPsiBuilder myBuilder;
 
+  @Override
   @NotNull
   public ASTNode parse(@NotNull IElementType root, @NotNull PsiBuilder builder) {
     myBuilder = createPsiBuilder(builder);
@@ -79,7 +80,7 @@ public abstract class AbstractIndentParser implements PsiParser {
     return myBuilder.getCurrentIndent();
   }
 
-  protected void error(String message) {
+  protected void error(@NotNull String message) {
     myBuilder.error(message);
   }
 
@@ -118,7 +119,7 @@ public abstract class AbstractIndentParser implements PsiParser {
     return expect(elementType, "Expected: " + elementType);
   }
 
-  protected boolean expect(@NotNull final IElementType elementType, String expectedMessage) {
+  protected boolean expect(@NotNull final IElementType elementType, @NotNull String expectedMessage) {
     if (getTokenType() == elementType) {
       advance();
       return true;
@@ -159,7 +160,7 @@ public abstract class AbstractIndentParser implements PsiParser {
     advanceUntil(TokenSet.EMPTY);
   }
 
-  protected void errorUntil(TokenSet tokenSet, String message) {
+  protected void errorUntil(TokenSet tokenSet, @NotNull String message) {
     PsiBuilder.Marker errorMarker = mark();
     advanceUntil(tokenSet);
     errorMarker.error(message);
@@ -170,7 +171,7 @@ public abstract class AbstractIndentParser implements PsiParser {
     advanceUntilEol();
     errorMarker.error(message);
   }
-  
+
   protected void errorUntilEof() {
     PsiBuilder.Marker errorMarker = mark();
     while (!eof()) {

@@ -32,7 +32,6 @@ import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.geom.Line2D;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -50,11 +49,11 @@ public class Utils{
     }
 
     @Override
-    public void actionPerformed(AnActionEvent e) {
+    public void actionPerformed(@NotNull AnActionEvent e) {
     }
 
     @Override
-    public void update(AnActionEvent e) {
+    public void update(@NotNull AnActionEvent e) {
       e.getPresentation().setEnabled(false);
       super.update(e);
     }
@@ -72,24 +71,13 @@ public class Utils{
     }
   }
 
-  @Deprecated
-  // Use #expandActionGroup with isModalContext instead
-  public static void expandActionGroup(@NotNull ActionGroup group,
-                                       List<AnAction> list,
-                                       PresentationFactory presentationFactory,
-                                       @NotNull DataContext context,
-                                       String place,
-                                       ActionManager actionManager){
-    expandActionGroup(false, group, list, presentationFactory, context, place, actionManager, false, group instanceof CompactActionGroup);
-  }
-
   /**
    * @param list this list contains expanded actions.
    * @param actionManager manager
    */
   public static void expandActionGroup(boolean isInModalContext,
                                        @NotNull ActionGroup group,
-                                       List<AnAction> list,
+                                       List<? super AnAction> list,
                                        PresentationFactory presentationFactory,
                                        @NotNull DataContext context,
                                        String place,
@@ -97,56 +85,20 @@ public class Utils{
     expandActionGroup(isInModalContext, group, list, presentationFactory, context, place, actionManager, false, group instanceof CompactActionGroup);
   }
 
-  @Deprecated
-  // Use #expandActionGroup with isModalContext instead
-  public static void expandActionGroup(@NotNull ActionGroup group,
-                                       List<AnAction> list,
-                                       PresentationFactory presentationFactory,
-                                       DataContext context,
-                                       @NotNull String place,
-                                       ActionManager actionManager,
-                                       boolean transparentOnly) {
-    expandActionGroup(false, group, list, presentationFactory, context, place, actionManager, transparentOnly, false);
-  }
-
-  public static void expandActionGroup(boolean isInModalContext,
-                                       @NotNull ActionGroup group,
-                                       List<AnAction> list,
-                                       PresentationFactory presentationFactory,
-                                       DataContext context,
-                                       @NotNull String place,
-                                       ActionManager actionManager,
-                                       boolean transparentOnly) {
-    expandActionGroup(isInModalContext, group, list, presentationFactory, context, place, actionManager, transparentOnly, false);
-  }
-
-  @Deprecated
-  // Use #expandActionGroup with isModalContext instead
-  public static void expandActionGroup(@NotNull ActionGroup group,
-                                       List<AnAction> list,
-                                       PresentationFactory presentationFactory,
-                                       DataContext context,
-                                       @NotNull String place,
-                                       ActionManager actionManager,
-                                       boolean transparentOnly,
-                                       boolean hideDisabled) {
-    expandActionGroup(false, group, list, presentationFactory, context, place, actionManager, transparentOnly, hideDisabled);
-  }
-
 
   /**
    * @param list this list contains expanded actions.
    * @param actionManager manager
    */
-  public static void expandActionGroup(boolean isInModalContext,
-                                       @NotNull ActionGroup group,
-                                       List<AnAction> list,
-                                       PresentationFactory presentationFactory,
-                                       DataContext context,
-                                       @NotNull String place,
-                                       ActionManager actionManager,
-                                       boolean transparentOnly,
-                                       boolean hideDisabled) {
+  private static void expandActionGroup(boolean isInModalContext,
+                                        @NotNull ActionGroup group,
+                                        List<? super AnAction> list,
+                                        PresentationFactory presentationFactory,
+                                        DataContext context,
+                                        @NotNull String place,
+                                        ActionManager actionManager,
+                                        boolean transparentOnly,
+                                        boolean hideDisabled) {
     expandActionGroup(isInModalContext , group, list, presentationFactory, context,
                       place, actionManager, transparentOnly, hideDisabled, false, false);
   }
@@ -157,7 +109,7 @@ public class Utils{
    */
   public static void expandActionGroup(boolean isInModalContext,
                                        @NotNull ActionGroup group,
-                                       List<AnAction> list,
+                                       List<? super AnAction> list,
                                        PresentationFactory presentationFactory,
                                        DataContext context,
                                        @NotNull String place,
@@ -195,7 +147,7 @@ public class Utils{
       AnActionEvent e1 = new AnActionEvent(null, context, place, presentation, actionManager, 0, isContextMenuAction, isToolbarAction);
       e1.setInjectedContext(child.isInInjectedContext());
 
-      if (transparentOnly && child.isTransparentUpdate() || !transparentOnly) {
+      if (!transparentOnly || child.isTransparentUpdate()) {
         if (!doUpdate(isInModalContext, child, e1, presentation)) continue;
       }
 
@@ -240,12 +192,6 @@ public class Utils{
     }
   }
 
-  @Deprecated
-  // Use #doUpdate with isModalContext instead
-  private static boolean doUpdate(final AnAction action, final AnActionEvent e, final Presentation presentation) {
-    return doUpdate(false, action, e, presentation);
-  }
-
   // returns false if exception was thrown and handled
   private static boolean doUpdate(boolean isInModalContext, final AnAction action, final AnActionEvent e, final Presentation presentation) throws ProcessCanceledException {
     if (ApplicationManager.getApplication().isDisposed()) return false;
@@ -283,7 +229,6 @@ public class Utils{
                                               String place,
                                               boolean checkVisible,
                                               boolean checkEnabled) {
-    //noinspection InstanceofIncompatibleInterface
     if (group instanceof AlwaysVisibleActionGroup) {
       return true;
     }
@@ -359,14 +304,6 @@ public class Utils{
         if (!StringUtil.isEmpty(text) || (i > 0 && i < size - 1)) {
           component.add(new JPopupMenu.Separator() {
             private final JMenuItem myMenu = !StringUtil.isEmpty(text) ? new JMenuItem(text) : null;
-            @Override
-            public Insets getInsets() {
-              final Insets insets = super.getInsets();
-              final boolean fix = UIUtil.isUnderGTKLookAndFeel() &&
-                                  getBorder() != null &&
-                                  insets.top + insets.bottom == 0;
-              return fix ? new Insets(2, insets.left, 3, insets.right) : insets;  // workaround for Sun bug #6636964
-            }
 
             @Override
             public void doLayout() {
@@ -378,22 +315,13 @@ public class Utils{
 
             @Override
             protected void paintComponent(Graphics g) {
-              if (UIUtil.isUnderWindowsClassicLookAndFeel() || UIUtil.isUnderDarcula() || UIUtil.isUnderWindowsLookAndFeel()
-                  || UIUtil.isUnderWin10LookAndFeel()) {
+              if (UIUtil.isUnderDarcula() || UIUtil.isUnderWin10LookAndFeel()) {
                 g.setColor(component.getBackground());
                 g.fillRect(0, 0, getWidth(), getHeight());
               }
               if (myMenu != null) {
                 myMenu.paint(g);
               } else {
-                if (SystemInfo.isMac) {
-                  Graphics2D g2 = (Graphics2D)g.create();
-                  g2.setStroke(new BasicStroke(2));
-                  g2.setColor(UIUtil.AQUA_SEPARATOR_FOREGROUND_COLOR);
-                  double y = (double)getHeight() / 2;
-                  g2.draw(new Line2D.Double(0, y, getWidth(), y));
-                  return;
-                }
                 super.paintComponent(g);
               }
             }
@@ -408,7 +336,7 @@ public class Utils{
       else if (action instanceof ActionGroup &&
                !(((ActionGroup)action).canBePerformed(context) &&
                  !hasVisibleChildren((ActionGroup)action, presentationFactory, context, place))) {
-        ActionMenu menu = new ActionMenu(context, place, (ActionGroup)action, presentationFactory, enableMnemonics, false, useDarkIcons);
+        ActionMenu menu = new ActionMenu(context, place, (ActionGroup)action, presentationFactory, enableMnemonics, useDarkIcons);
         component.add(menu);
         children.add(menu);
       }

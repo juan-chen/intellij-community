@@ -53,12 +53,12 @@ public class ComponentWithBrowseButton<Comp extends JComponent> extends JPanel i
     boolean inlineBrowseButton = myComponent instanceof ExtendableTextComponent && Experiments.isFeatureEnabled("inline.browse.button");
     if (inlineBrowseButton) {
       ((ExtendableTextComponent)myComponent).addExtension(ExtendableTextComponent.Extension.create(
-        AllIcons.General.OpenDisk, AllIcons.General.OpenDiskHover,
+        getDefaultIcon(), getHoveredIcon(),
         UIBundle.message("component.with.browse.button.browse.button.tooltip.text"),
         this::notifyActionListeners));
       new DumbAwareAction() {
         @Override
-        public void actionPerformed(AnActionEvent e) {
+        public void actionPerformed(@NotNull AnActionEvent e) {
           notifyActionListeners();
         }
       }.registerCustomShortcutSet(new CustomShortcutSet(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.SHIFT_DOWN_MASK)), myComponent);
@@ -82,6 +82,16 @@ public class ComponentWithBrowseButton<Comp extends JComponent> extends JPanel i
       myBrowseButton.setFocusable(true);
       myBrowseButton.getAccessibleContext().setAccessibleName("Browse");
     }
+  }
+
+  @NotNull
+  protected Icon getDefaultIcon() {
+    return AllIcons.General.OpenDisk;
+  }
+
+  @NotNull
+  protected Icon getHoveredIcon() {
+    return AllIcons.General.OpenDiskHover;
   }
 
   private void notifyActionListeners() {
@@ -159,17 +169,7 @@ public class ComponentWithBrowseButton<Comp extends JComponent> extends JPanel i
    * @deprecated use {@link #addActionListener(ActionListener)} instead
    */
   @Deprecated
-  @SuppressWarnings("UnusedParameters")
   public void addBrowseFolderListener(@Nullable Project project, final BrowseFolderActionListener<Comp> actionListener) {
-    addActionListener(actionListener);
-  }
-
-  /**
-   * @deprecated use {@link #addActionListener(ActionListener)} instead
-   */
-  @Deprecated
-  @SuppressWarnings("UnusedParameters")
-  public void addBrowseFolderListener(@Nullable Project project, final BrowseFolderActionListener<Comp> actionListener, boolean autoRemoveOnHide) {
     addActionListener(actionListener);
   }
 
@@ -195,12 +195,12 @@ public class ComponentWithBrowseButton<Comp extends JComponent> extends JPanel i
     }
 
     @Override
-    public void update(AnActionEvent e) {
+    public void update(@NotNull AnActionEvent e) {
       e.getPresentation().setEnabled(myBrowseButton.isVisible() && myBrowseButton.isEnabled());
     }
 
     @Override
-    public void actionPerformed(AnActionEvent e){
+    public void actionPerformed(@NotNull AnActionEvent e){
       myBrowseButton.doClick();
     }
 
@@ -219,7 +219,7 @@ public class ComponentWithBrowseButton<Comp extends JComponent> extends JPanel i
     private final String myTitle;
     private final String myDescription;
     protected ComponentWithBrowseButton<T> myTextComponent;
-    private final TextComponentAccessor<T> myAccessor;
+    private final TextComponentAccessor<? super T> myAccessor;
     private Project myProject;
     protected final FileChooserDescriptor myFileChooserDescriptor;
 
@@ -228,7 +228,7 @@ public class ComponentWithBrowseButton<Comp extends JComponent> extends JPanel i
                                       ComponentWithBrowseButton<T> textField,
                                       @Nullable Project project,
                                       FileChooserDescriptor fileChooserDescriptor,
-                                      TextComponentAccessor<T> accessor) {
+                                      TextComponentAccessor<? super T> accessor) {
       if (fileChooserDescriptor != null && fileChooserDescriptor.isChooseMultiple()) {
         LOG.error("multiple selection not supported");
         fileChooserDescriptor = new FileChooserDescriptor(fileChooserDescriptor) {
@@ -338,4 +338,12 @@ public class ComponentWithBrowseButton<Comp extends JComponent> extends JPanel i
     if (e.isConsumed()) return true;
     return super.processKeyBinding(ks, e, condition, pressed);
   }
+  /**
+   * @deprecated use {@link #addActionListener(ActionListener)} instead
+   */
+  @Deprecated
+  public void addBrowseFolderListener(@Nullable Project project, final BrowseFolderActionListener<Comp> actionListener, boolean autoRemoveOnHide) {
+    addActionListener(actionListener);
+  }
+
 }

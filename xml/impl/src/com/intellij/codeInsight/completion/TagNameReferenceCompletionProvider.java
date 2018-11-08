@@ -45,7 +45,7 @@ public class TagNameReferenceCompletionProvider extends CompletionProvider<Compl
 
   @Override
   protected void addCompletions(@NotNull CompletionParameters parameters,
-                                ProcessingContext context,
+                                @NotNull ProcessingContext context,
                                 @NotNull final CompletionResultSet result) {
     LegacyCompletionContributor.processReferences(parameters, result, (reference, set) -> {
       if (reference instanceof TagNameReference) {
@@ -61,7 +61,7 @@ public class TagNameReferenceCompletionProvider extends CompletionProvider<Compl
   }
 
   public static void collectCompletionVariants(TagNameReference tagNameReference,
-                                               Consumer<LookupElement> consumer) {
+                                               Consumer<? super LookupElement> consumer) {
     PsiElement element = tagNameReference.getElement();
     if (element instanceof XmlTag) {
       if (!tagNameReference.isStartTagFlag()) {

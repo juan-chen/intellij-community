@@ -35,7 +35,7 @@ public final class ActionPopupMenuImpl implements ActionPopupMenu, ApplicationAc
   private final MyMenu myMenu;
   private final ActionManagerImpl myManager;
 
-  private Getter<DataContext> myDataContextProvider;
+  private Getter<? extends DataContext> myDataContextProvider;
   private MessageBusConnection myConnection;
 
   private IdeFrame myFrame;
@@ -64,7 +64,7 @@ public final class ActionPopupMenuImpl implements ActionPopupMenu, ApplicationAc
     return myMenu.myGroup;
   }
 
-  public void setDataContextProvider(@Nullable Getter<DataContext> dataContextProvider) {
+  public void setDataContextProvider(@Nullable Getter<? extends DataContext> dataContextProvider) {
     myDataContextProvider = dataContextProvider;
   }
 
@@ -85,7 +85,7 @@ public final class ActionPopupMenuImpl implements ActionPopupMenu, ApplicationAc
     private DataContext myContext;
     private final PresentationFactory myPresentationFactory;
 
-    public MyMenu(String place, @NotNull ActionGroup group, @Nullable PresentationFactory factory) {
+    MyMenu(String place, @NotNull ActionGroup group, @Nullable PresentationFactory factory) {
       myPlace = place;
       myGroup = group;
       myPresentationFactory = factory != null ? factory : new MenuItemPresentationFactory();
@@ -95,7 +95,6 @@ public final class ActionPopupMenuImpl implements ActionPopupMenu, ApplicationAc
     @Override
     public void show(final Component component, int x, int y) {
       if (!component.isShowing()) {
-        //noinspection HardCodedStringLiteral
         throw new IllegalArgumentException("component must be shown on the screen");
       }
 
@@ -161,7 +160,7 @@ public final class ActionPopupMenuImpl implements ActionPopupMenu, ApplicationAc
   }
 
   @Override
-  public void applicationDeactivated(IdeFrame ideFrame) {
+  public void applicationDeactivated(@NotNull IdeFrame ideFrame) {
     if (myFrame == ideFrame) {
       myMenu.setVisible(false);
     }

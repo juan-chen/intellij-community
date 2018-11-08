@@ -50,7 +50,6 @@ import java.util.function.IntConsumer;
 
 /**
  * @author stathik
- * @since Aug 4, 2003
  */
 class ITNProxy {
   private static final String DEFAULT_USER = "idea_anonymous";
@@ -138,7 +137,7 @@ class ITNProxy {
                         @Nullable String password,
                         @NotNull ErrorBean error,
                         @NotNull IntConsumer onSuccess,
-                        @NotNull Consumer<Exception> onError) {
+                        @NotNull Consumer<? super Exception> onError) {
     if (StringUtil.isEmptyOrSpaces(login)) {
       login = DEFAULT_USER;
       password = DEFAULT_PASS;

@@ -34,8 +34,10 @@ import org.junit.Assume.assumeTrue
 import java.io.File
 import java.util.*
 
+class GitStagingCommitTest : GitCommitTest(true)
+class GitWithOnlyCommitTest : GitCommitTest(false)
 
-class GitCommitTest : GitSingleRepoTest() {
+abstract class GitCommitTest(private val useStagingArea: Boolean) : GitSingleRepoTest() {
   private val myMovementProvider = MyExplicitMovementProvider()
 
   override fun getDebugLogCategories() = super.getDebugLogCategories().plus("#" + GitCheckinEnvironment::class.java.name)
@@ -46,6 +48,7 @@ class GitCommitTest : GitSingleRepoTest() {
     val point = Extensions.getRootArea().getExtensionPoint(GitCheckinExplicitMovementProvider.EP_NAME)
     point.registerExtension(myMovementProvider)
     Registry.get("git.allow.explicit.commit.renames").setValue(true)
+    Registry.get("git.force.commit.using.staging.area").setValue(useStagingArea)
 
     (vcs.checkinEnvironment as GitCheckinEnvironment).setCommitRenamesSeparately(true)
   }
@@ -55,6 +58,7 @@ class GitCommitTest : GitSingleRepoTest() {
       val point = Extensions.getRootArea().getExtensionPoint(GitCheckinExplicitMovementProvider.EP_NAME)
       point.unregisterExtension(myMovementProvider)
       Registry.get("git.allow.explicit.commit.renames").resetToDefault()
+      Registry.get("git.force.commit.using.staging.area").resetToDefault()
 
       (vcs.checkinEnvironment as GitCheckinEnvironment).setCommitRenamesSeparately(false)
     }
@@ -533,7 +537,7 @@ class GitCommitTest : GitSingleRepoTest() {
 
   fun `test commit rename with conflicting staged rename`() {
     `assume version where git reset returns 0 exit code on success `()
-    assumeTrue(Registry.`is`("git.force.commit.using.staging.area"))
+    assumeTrue(Registry.`is`("git.force.commit.using.staging.area")) // known bug in "--only" implementation
 
     tac("a.txt", "file content")
 
@@ -563,6 +567,262 @@ class GitCommitTest : GitSingleRepoTest() {
 
     repo.assertCommitted {
       rename("a.txt", "b.txt")
+    }
+  }
+
+  fun `test commit with excluded added-deleted file`() {
+    `assume version where git reset returns 0 exit code on success `()
+
+    tac("a.txt", "file content")
+    overwrite("a.txt", "new content")
+
+    touch("b.txt", "file content")
+    git("add b.txt")
+    rm("b.txt")
+
+    val changes = assertChanges {
+      modified("a.txt")
+    }
+
+    commit(changes)
+
+    assertNoChanges()
+    assertMessage("comment", repo.message("HEAD"))
+    repo.assertCommitted {
+      modified("a.txt")
+    }
+  }
+
+  fun `test commit with excluded deleted-added file`() {
+    `assume version where git reset returns 0 exit code on success `()
+
+    tac("a.txt", "file content")
+    tac("b.txt", "file content")
+
+    overwrite("a.txt", "new content")
+
+    rm("b.txt")
+    git("add -A b.txt")
+    touch("b.txt", "new content")
+
+    val changes = assertChanges {
+      modified("a.txt")
+      deleted("b.txt")
+    }
+
+    commit(listOf(changes[0]))
+
+    assertChanges {
+      deleted("b.txt")
+    }
+    assertMessage("comment", repo.message("HEAD"))
+    repo.assertCommitted {
+      modified("a.txt")
+    }
+  }
+
+  fun `test commit with deleted-added file`() {
+    `assume version where git reset returns 0 exit code on success `()
+
+    tac("a.txt", "file content")
+    tac("b.txt", "file content")
+
+    overwrite("a.txt", "new content")
+
+    rm("b.txt")
+    git("add -A b.txt")
+    touch("b.txt", "new content")
+
+    val changes = assertChanges {
+      modified("a.txt")
+      deleted("b.txt")
+    }
+
+    commit(changes)
+
+    assertNoChanges()
+    assertMessage("comment", repo.message("HEAD"))
+
+    // bad case, but committing "deletion" seems logical (as it is shown in commit dialog)
+    if (Registry.`is`("git.force.commit.using.staging.area")) {
+      repo.assertCommitted {
+        modified("a.txt")
+        deleted("b.txt")
+      }
+    }
+    else {
+      repo.assertCommitted {
+        modified("a.txt")
+        modified("b.txt")
+      }
+    }
+  }
+
+  fun `test commit during unresolved merge conflict`() {
+    `assume version where git reset returns 0 exit code on success `()
+    assumeTrue(Registry.`is`("git.force.commit.using.staging.area")) // "--only" shows dialog in this case
+
+    createFileStructure(projectRoot, "a.txt")
+    addCommit("created some file structure")
+
+    git("branch feature")
+
+    val file = File(projectPath, "a.txt")
+    assertTrue("File doesn't exist!", file.exists())
+    overwrite(file, "my content")
+    addCommit("modified in master")
+
+    checkout("feature")
+    overwrite(file, "brother content")
+    addCommit("modified in feature")
+
+    checkout("master")
+    git("merge feature", true) // ignoring non-zero exit-code reporting about conflicts
+
+    updateChangeListManager()
+    val changes = changeListManager.allChanges
+    assertTrue(!changes.isEmpty())
+
+    val exceptions = vcs.checkinEnvironment!!.commit(ArrayList(changes), "comment")
+    assertTrue(exceptions!!.isNotEmpty())
+
+    assertMessage("modified in master", repo.message("HEAD"))
+  }
+
+  fun `test commit gitignored file`() {
+    `assume version where git reset returns 0 exit code on success `()
+
+    tac(".gitignore", "ignore*")
+
+    touch("file.txt", "file1 content")
+    touch("ignore1.txt", "ignore1 content")
+    touch("ignore2.txt", "ignore2 content")
+    git("add -f -- ignore1.txt ignore2.txt file.txt")
+
+    val changes1 = assertChanges {
+      added("file.txt")
+      added("ignore1.txt")
+      added("ignore2.txt")
+    }
+
+    commit(changes1)
+
+    assertNoChanges()
+    assertMessage("comment", repo.message("HEAD"))
+    repo.assertCommitted {
+      added("file.txt")
+      added("ignore1.txt")
+      added("ignore2.txt")
+    }
+
+    overwrite("file.txt", "new file content")
+    overwrite("ignore1.txt", "new file1 content")
+    overwrite("ignore2.txt", "new file2 content")
+
+    val changes2 = assertChanges {
+      modified("file.txt")
+      modified("ignore1.txt")
+      modified("ignore2.txt")
+    }
+
+    commit(changes2)
+
+    assertNoChanges()
+    assertMessage("comment", repo.message("HEAD"))
+    repo.assertCommitted {
+      modified("file.txt")
+      modified("ignore1.txt")
+      modified("ignore2.txt")
+    }
+  }
+
+  fun `test commit gitignored directory`() {
+    `assume version where git reset returns 0 exit code on success `()
+
+    tac(".gitignore", "ignore/")
+
+    touch("file.txt", "file1 content")
+    touch("ignore/ignore1.txt", "ignore1 content")
+    touch("ignore/ignore2.txt", "ignore2 content")
+    git("add -f -- ignore/ignore1.txt ignore/ignore2.txt file.txt")
+
+    val changes1 = assertChanges {
+      added("file.txt")
+      added("ignore/ignore1.txt")
+      added("ignore/ignore2.txt")
+    }
+
+    commit(changes1)
+
+    assertNoChanges()
+    assertMessage("comment", repo.message("HEAD"))
+    repo.assertCommitted {
+      added("file.txt")
+      added("ignore/ignore1.txt")
+      added("ignore/ignore2.txt")
+    }
+
+    overwrite("file.txt", "new file content")
+    overwrite("ignore/ignore1.txt", "new file1 content")
+    overwrite("ignore/ignore2.txt", "new file2 content")
+
+    val changes2 = assertChanges {
+      modified("file.txt")
+      modified("ignore/ignore1.txt")
+      modified("ignore/ignore2.txt")
+    }
+
+    commit(changes2)
+
+    assertNoChanges()
+    assertMessage("comment", repo.message("HEAD"))
+    repo.assertCommitted {
+      modified("file.txt")
+      modified("ignore/ignore1.txt")
+      modified("ignore/ignore2.txt")
+    }
+  }
+
+  fun `test excluded from commit gitignored file`() {
+    `assume version where git reset returns 0 exit code on success `()
+
+    tac(".gitignore", "ignore*")
+
+    touch("file.txt", "file1 content")
+    touch("ignore1.txt", "ignore1 content")
+    git("add -f -- ignore1.txt file.txt")
+
+    val changes1 = assertChanges {
+      added("file.txt")
+      added("ignore1.txt")
+    }
+
+    commit(changes1)
+
+    assertNoChanges()
+    assertMessage("comment", repo.message("HEAD"))
+    repo.assertCommitted {
+      added("file.txt")
+      added("ignore1.txt")
+    }
+
+    overwrite("ignore1.txt", "new file content")
+    touch("ignore2.txt", "ignore2 content")
+    git("add -f -- ignore1.txt ignore2.txt")
+
+    val changes2 = assertChanges {
+      modified("ignore1.txt")
+      added("ignore2.txt")
+    }
+
+    commit(listOf(changes2[0]))
+
+    assertChanges {
+      added("ignore2.txt")
+    }
+    assertMessage("comment", repo.message("HEAD"))
+    repo.assertCommitted {
+      modified("ignore1.txt")
     }
   }
 

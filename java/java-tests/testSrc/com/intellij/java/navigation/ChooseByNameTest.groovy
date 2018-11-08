@@ -143,6 +143,12 @@ class Intf {
     assert gotoFile('i') == [i, index]
   }
 
+  void "test prefer shorter filename match"() {
+    def shorter = addEmptyFile("foo/cp-users.txt")
+    def longer = addEmptyFile("cp-users-and-smth.html")
+    assert gotoFile('cpusers') == [shorter, longer]
+  }
+
   void "test consider dot-idea files out of project"() {
     def outside = addEmptyFile(".idea/workspace.xml")
     def inside = addEmptyFile("workspace.txt")
@@ -487,6 +493,13 @@ class Intf {
     def asb = myFixture.findClass('java.lang.AbstractStringBuilder')
     assert gotoClass('Str*Builder', true) == [sb, asb]
     assert gotoClass('java.Str*Builder', true) == [sb, asb]
+  }
+
+  void "test include overridden qualified name method matches"() {
+    def m1 = myFixture.addClass('interface HttpRequest { void start() {} }').methods[0]
+    def m2 = myFixture.addClass('interface Request extends HttpRequest { void start() {} }').methods[0]
+    assert gotoSymbol('Request.start') == [m1, m2]
+    assert gotoSymbol('start') == [m1] // works as usual for non-qualified patterns
   }
 
   private List<Object> gotoClass(String text, boolean checkboxState = false) {

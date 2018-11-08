@@ -52,6 +52,7 @@ import com.jetbrains.python.sdk.*
 import com.jetbrains.python.sdk.flavors.PythonSdkFlavor
 import icons.PythonIcons
 import org.jetbrains.annotations.SystemDependent
+import org.jetbrains.annotations.TestOnly
 import java.io.File
 import javax.swing.Icon
 
@@ -155,7 +156,7 @@ fun setupPipEnvSdkUnderProgress(project: Project?,
   val suggestedName = "Pipenv (${PathUtil.getFileName(projectPath)})"
   return createSdkByGenerateTask(task, existingSdks, null, projectPath, suggestedName)?.apply {
     isPipEnv = true
-    associateWithModule(module, newProjectPath != null)
+    associateWithModule(module, newProjectPath)
   }
 }
 
@@ -244,17 +245,7 @@ val Sdk.pipFileLockSources: List<String>
  */
 val Sdk.pipFileLockRequirements: List<PyRequirement>?
   get() {
-    fun toRequirements(packages: Map<String, PipFileLockPackage>): List<PyRequirement> =
-      packages
-        .asSequence()
-        .filterNot { (_, pkg) -> pkg.editable ?: false }
-        .flatMap { (name, pkg) -> packageManager.parseRequirements("$name${pkg.version ?: ""}").asSequence() }
-        .toList()
-
-    val pipFileLock = parsePipFileLock() ?: return null
-    val packages = pipFileLock.packages?.let { toRequirements(it) } ?: emptyList()
-    val devPackages = pipFileLock.devPackages?.let { toRequirements(it) } ?: emptyList()
-    return packages + devPackages
+    return pipFileLock?.let { getPipFileLockRequirements(it, packageManager) }
   }
 
 /**
@@ -282,7 +273,7 @@ class UsePipEnvQuickFix(sdk: Sdk?, module: Module) : LocalQuickFix {
         SdkConfigurationUtil.addSdk(newSdk)
       }
       else {
-        sdk.associateWithModule(module, false)
+        sdk.associateWithModule(module, null)
       }
       project.pythonSdk = sdk
       module.pythonSdk = sdk
@@ -337,9 +328,12 @@ class PipEnvPipFileWatcherComponent(val project: Project) : ProjectComponent {
       override fun editorCreated(event: EditorFactoryEvent) {
         if (!isPipFileEditor(event.editor)) return
         val listener = object : DocumentListener {
-          override fun documentChanged(event: DocumentEvent?) {
-            val module = event?.document?.virtualFile?.getModule(project) ?: return
-            notifyPipFileChanged(module)
+          override fun documentChanged(event: DocumentEvent) {
+            val document = event?.document ?: return
+            val module = document.virtualFile?.getModule(project) ?: return
+            if (FileDocumentManager.getInstance().isDocumentUnsaved(document)) {
+              notifyPipFileChanged(module)
+            }
           }
         }
         with(event.editor.document) {
@@ -359,7 +353,7 @@ class PipEnvPipFileWatcherComponent(val project: Project) : ProjectComponent {
           module.pipFileLock == null -> "not found"
           else -> "out of date"
         }
-        val title = "$PIP_FILE_LOCK for ${module.name} is $what"
+        val title = "$PIP_FILE_LOCK is $what"
         val content = "Run <a href='#lock'>pipenv lock</a> or <a href='#update'>pipenv update</a>"
         val notification = LOCK_NOTIFICATION_GROUP.createNotification(title, null, content,
                                                                       NotificationType.INFORMATION) { notification, event ->
@@ -394,6 +388,9 @@ class PipEnvPipFileWatcherComponent(val project: Project) : ProjectComponent {
                 Messages.showErrorDialog(project, e.toString(), "Error Running Pipenv")
               }
             }
+            finally {
+              sdk.associatedModule?.baseDir?.refresh(true, false)
+            }
           }
         }
         ProgressManager.getInstance().run(task)
@@ -423,10 +420,31 @@ private val LOCK_NOTIFICATION_GROUP = NotificationGroup("$PIP_FILE Watcher", Not
 private val Sdk.packageManager: PyPackageManager
   get() = PyPackageManagers.getInstance().forSdk(this)
 
+
+@TestOnly
+fun getPipFileLockRequirements(virtualFile: VirtualFile, packageManager: PyPackageManager): List<PyRequirement>? {
+  fun toRequirements(packages: Map<String, PipFileLockPackage>): List<PyRequirement> =
+    packages
+      .asSequence()
+      .filterNot { (_, pkg) -> pkg.editable ?: false }
+      // TODO: Support requirements markers (PEP 496), currently any packages with markers are ignored due to PY-30803
+      .filter { (_, pkg) -> pkg.markers == null }
+      .flatMap { (name, pkg) -> packageManager.parseRequirements("$name${pkg.version ?: ""}").asSequence() }
+      .toList()
+  val pipFileLock = parsePipFileLock(virtualFile) ?: return null
+  val packages = pipFileLock.packages?.let { toRequirements(it) } ?: emptyList()
+  val devPackages = pipFileLock.devPackages?.let { toRequirements(it) } ?: emptyList()
+  return packages + devPackages
+}
+
 private fun Sdk.parsePipFileLock(): PipFileLock? {
   // TODO: Log errors if Pipfile.lock is not found
   val file = pipFileLock ?: return null
-  val text = ReadAction.compute<String, Throwable> { FileDocumentManager.getInstance().getDocument(file)?.text }
+  return parsePipFileLock(file)
+}
+
+private fun parsePipFileLock(virtualFile: VirtualFile): PipFileLock? {
+  val text = ReadAction.compute<String, Throwable> { FileDocumentManager.getInstance().getDocument(virtualFile)?.text }
   return try {
     Gson().fromJson(text, PipFileLock::class.java)
   }
@@ -452,5 +470,7 @@ private data class PipFileLockMeta(@SerializedName("sources") var sources: List<
 private data class PipFileLockSource(@SerializedName("url") var url: String?)
 
 private data class PipFileLockPackage(@SerializedName("version") var version: String?,
-                                      @SerializedName("editable") var editable: Boolean?)
+                                      @SerializedName("editable") var editable: Boolean?,
+                                      @SerializedName("hashes") var hashes: List<String>?,
+                                      @SerializedName("markers") var markers: String?)
 

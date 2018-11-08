@@ -54,7 +54,12 @@ public class RangeMarkerImpl extends UserDataHolderBase implements RangeMarkerEx
   // constructor which creates marker without document and saves it in the virtual file directly. Can be cheaper than loading document.
   RangeMarkerImpl(@NotNull VirtualFile virtualFile, int start, int end, boolean register) {
     // unfortunately we don't know the exact document size until we load it
-    this(virtualFile, Integer.MAX_VALUE, start, end, register, false, false);
+    this(virtualFile, estimateDocumentLength(virtualFile), start, end, register, false, false);
+  }
+
+  private static int estimateDocumentLength(@NotNull VirtualFile virtualFile) {
+    Document document = FileDocumentManager.getInstance().getCachedDocument(virtualFile);
+    return document == null ? Integer.MAX_VALUE : document.getTextLength();
   }
 
   private RangeMarkerImpl(@NotNull Object documentOrFile, int documentTextLength, int start,
@@ -130,7 +135,12 @@ public class RangeMarkerImpl extends UserDataHolderBase implements RangeMarkerEx
   @NotNull
   public final DocumentEx getDocument() {
     Object file = myDocumentOrFile;
-    return file instanceof VirtualFile ? (DocumentEx)FileDocumentManager.getInstance().getDocument((VirtualFile)file) : (DocumentEx)file;
+    DocumentEx document =
+      file instanceof VirtualFile ? (DocumentEx)FileDocumentManager.getInstance().getDocument((VirtualFile)file) : (DocumentEx)file;
+    if (document == null) {
+      LOG.error("document is null; isValid=" + isValid()+"; file="+file);
+    }
+    return document;
   }
 
   // fake method to simplify setGreedyToLeft/right methods. overridden in RangeHighlighter

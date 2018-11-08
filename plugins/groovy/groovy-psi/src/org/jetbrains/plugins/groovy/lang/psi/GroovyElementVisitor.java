@@ -3,9 +3,7 @@ package org.jetbrains.plugins.groovy.lang.psi;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.plugins.groovy.lang.groovydoc.psi.api.*;
-import org.jetbrains.plugins.groovy.lang.psi.api.GrDoWhileStatement;
-import org.jetbrains.plugins.groovy.lang.psi.api.GrInExpression;
-import org.jetbrains.plugins.groovy.lang.psi.api.GrTryResourceList;
+import org.jetbrains.plugins.groovy.lang.psi.api.*;
 import org.jetbrains.plugins.groovy.lang.psi.api.auxiliary.GrListOrMap;
 import org.jetbrains.plugins.groovy.lang.psi.api.auxiliary.GrThrowsClause;
 import org.jetbrains.plugins.groovy.lang.psi.api.auxiliary.modifiers.GrModifierList;
@@ -115,16 +113,20 @@ public abstract class GroovyElementVisitor {
     visitExpression(callExpression);
   }
 
-  public void visitMethodCallExpression(@NotNull GrMethodCallExpression methodCallExpression) {
-    visitCallExpression(methodCallExpression);
-  }
-
   public void visitNewExpression(@NotNull GrNewExpression newExpression) {
     visitCallExpression(newExpression);
   }
 
+  public void visitMethodCall(@NotNull GrMethodCall call) {
+    visitCallExpression(call);
+  }
+
+  public void visitMethodCallExpression(@NotNull GrMethodCallExpression methodCallExpression) {
+    visitMethodCall(methodCallExpression);
+  }
+
   public void visitApplicationStatement(@NotNull GrApplicationStatement applicationStatement) {
-    visitStatement(applicationStatement);
+    visitMethodCall(applicationStatement);
   }
 
   public void visitArrayDeclaration(@NotNull GrArrayDeclaration arrayDeclaration) {
@@ -469,5 +471,13 @@ public abstract class GroovyElementVisitor {
 
   public void visitSpreadArgument(@NotNull GrSpreadArgument spreadArgument) {
     visitExpression(spreadArgument);
+  }
+
+  public void visitExpressionList(@NotNull GrExpressionList expressionList) {
+    visitElement(expressionList);
+  }
+
+  public void visitArrayInitializer(@NotNull GrArrayInitializer arrayInitializer) {
+    visitElement(arrayInitializer);
   }
 }

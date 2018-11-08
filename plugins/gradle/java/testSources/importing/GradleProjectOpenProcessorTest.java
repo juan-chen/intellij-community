@@ -22,6 +22,7 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.profile.codeInspection.InspectionProfileManager;
 import com.intellij.profile.codeInspection.ProjectInspectionProfileManager;
+import com.intellij.testFramework.EdtTestUtilKt;
 import com.intellij.testFramework.PlatformTestUtil;
 import com.intellij.util.SmartList;
 import com.intellij.util.concurrency.Semaphore;
@@ -43,9 +44,7 @@ import static com.intellij.openapi.externalSystem.util.ExternalSystemApiUtil.exe
 
 /**
  * @author Vladislav.Soroka
- * @since 3/20/2017
  */
-@SuppressWarnings("JUnit4AnnotatedMethodInJUnit3TestCase")
 public class GradleProjectOpenProcessorTest extends GradleImportingTestCase {
 
   private final List<Sdk> removedSdks = new SmartList<>();
@@ -200,7 +199,7 @@ public class GradleProjectOpenProcessorTest extends GradleImportingTestCase {
         MessageBusConnection busConnection = project.getMessageBus().connect();
         busConnection.subscribe(ProjectManager.TOPIC, new ProjectManagerListener() {
           @Override
-          public void projectOpened(Project project) {
+          public void projectOpened(@NotNull Project project) {
             ProjectInspectionProfileManager.getInstance(project).forceLoadSchemes();
           }
         });
@@ -209,7 +208,11 @@ public class GradleProjectOpenProcessorTest extends GradleImportingTestCase {
 
     Project fooProject = null;
     try {
-      fooProject = executeOnEdt(() -> ProjectUtil.openOrImport(foo.getPath(), null, true));
+      fooProject = EdtTestUtilKt.runInEdtAndGet(() -> {
+        final Project project = ProjectUtil.openOrImport(foo.getPath(), null, true);
+        UIUtil.dispatchAllInvocationEvents();
+        return project;
+      });
       assertTrue(fooProject.isOpen());
       InspectionProfileImpl currentProfile = getCurrentProfile(fooProject);
       assertEquals("myInspections", currentProfile.getName());

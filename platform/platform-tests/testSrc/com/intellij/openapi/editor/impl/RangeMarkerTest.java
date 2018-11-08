@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.openapi.editor.impl;
 
 import com.intellij.lang.FileASTNode;
@@ -53,6 +39,7 @@ import org.jetbrains.annotations.NotNull;
 import java.io.IOException;
 import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -381,7 +368,7 @@ public class RangeMarkerTest extends LightPlatformTestCase {
     final List<DocumentEvent> events = new ArrayList<>();
     document.addDocumentListener(new DocumentListener() {
       @Override
-      public void documentChanged(DocumentEvent e) {
+      public void documentChanged(@NotNull DocumentEvent e) {
         events.add(e);
       }
     });
@@ -684,48 +671,6 @@ public class RangeMarkerTest extends LightPlatformTestCase {
     delete(mm, 0);
   }
 
-  public void _testRandomAddRemove() {
-    int N = 100;
-
-    for (int ti=0; ;ti++) {
-      if (ti%10000 ==0) System.out.println(ti);
-      DocumentEx document = (DocumentEx)EditorFactory.getInstance().createDocument(StringUtil.repeatSymbol(' ', N));
-
-      Random gen = new Random();
-      List<Pair<RangeMarker, TextRange>> adds = new ArrayList<>();
-      List<Pair<RangeMarker, TextRange>> dels = new ArrayList<>();
-
-
-      try {
-        for (int i = 0; i < 30; i++) {
-          int x = gen.nextInt(N);
-          int y = x + gen.nextInt(N - x);
-          if (gen.nextBoolean()) {
-            x = 0;
-            y = document.getTextLength();
-          }
-          RangeMarkerEx r = (RangeMarkerEx)document.createRangeMarker(x, y);
-          adds.add(Pair.create(r, TextRange.create(r)));
-        }
-        List<Pair<RangeMarker, TextRange>> candidates = new ArrayList<>(adds);
-        while (!candidates.isEmpty()) {
-          int size = candidates.size();
-          int x = gen.nextInt(size);
-          Pair<RangeMarker, TextRange> c = candidates.remove(x);
-          RangeMarkerEx r = (RangeMarkerEx)c.first;
-          assertEquals(size-1, candidates.size());
-          dels.add(c);
-          r.dispose();
-        }
-      }
-      catch (AssertionError e) {
-        printFailingSteps(adds, dels, Collections.emptyList());
-        throw e;
-      }
-    }
-
-  }
-
   private static void edit(DocumentEx document, int... offsets) {
     for (int i = 0; i < offsets.length; i+=3) {
       int offset = offsets[i];
@@ -930,22 +875,22 @@ public class RangeMarkerTest extends LightPlatformTestCase {
   private static void printFailingSteps(List<Pair<RangeMarker, TextRange>> adds,
                                         List<Pair<RangeMarker, TextRange>> dels,
                                         List<Trinity<Integer, Integer, Integer>> edits) {
-    String s = "adds: ";
+    StringBuilder s = new StringBuilder("adds: ");
     for (Pair<RangeMarker, TextRange> c : adds) {
       TextRange t = c.second;
-      s += t.getStartOffset() + "," + t.getEndOffset() + ", ";
+      s.append(t.getStartOffset()).append(",").append(t.getEndOffset()).append(", ");
     }
 
-    s += "\nedits: ";
+    s.append("\nedits: ");
     for (Trinity<Integer, Integer, Integer> edit : edits) {
-      s += edit.first + "," + edit.second + "," + edit.third + ",  ";
+      s.append(edit.first).append(",").append(edit.second).append(",").append(edit.third).append(",  ");
     }
-    s += "\ndels: ";
+    s.append("\ndels: ");
 
     for (Pair<RangeMarker, TextRange> c : dels) {
       int index = adds.indexOf(c);
       assertSame(c, adds.get(index));
-      s += index + ", ";
+      s.append(index).append(", ");
     }
     System.err.println(s);
   }
@@ -1167,6 +1112,39 @@ public class RangeMarkerTest extends LightPlatformTestCase {
     marker.dispose();
   }
 
+  public void testLazyRangeMarkersWithInvalidOffsetWhenNoDocumentCreatedMustInvalidateThemSelvesOnFirstOpportunity() {
+    psiFile = createFile("x.txt", "");
+
+    LazyRangeMarkerFactoryImpl factory = (LazyRangeMarkerFactoryImpl)LazyRangeMarkerFactory.getInstance(getProject());
+    VirtualFile virtualFile = psiFile.getVirtualFile();
+
+    assertEquals("", psiFile.getText());
+
+    RangeMarker marker = factory.createRangeMarker(virtualFile, 1 /* invalid offset */);
+
+    document = FileDocumentManager.getInstance().getDocument(virtualFile);
+    document.replaceString(0, 0, "\n\t\n");  // used to throw AssertionError from RangeMarkerTree.updateMarkersOnChange
+    assertEquals("\n\t\n", document.getText());
+    assertFalse(marker.isValid());
+  }
+
+  public void testLazyRangeMarkersWithInvalidOffsetWhenCachedDocumentAlreadyExistsMustRejectInvalidOffsetsRightAway() {
+    psiFile = createFile("x.txt", "");
+
+    LazyRangeMarkerFactoryImpl factory = (LazyRangeMarkerFactoryImpl)LazyRangeMarkerFactory.getInstance(getProject());
+    VirtualFile virtualFile = psiFile.getVirtualFile();
+    document = FileDocumentManager.getInstance().getDocument(virtualFile);
+
+    assertEquals("", psiFile.getText());
+
+    try {
+      factory.createRangeMarker(virtualFile, 1 /* invalid offset */);
+      fail("Must fail fast");
+    }
+    catch (IllegalArgumentException ignored) {
+    }
+  }
+
   public void testNonGreedyMarkersGrowOnAppendingReplace() {
     Document doc = new DocumentImpl("foo");
     RangeMarker marker = doc.createRangeMarker(0, 3);
@@ -1184,7 +1162,7 @@ public class RangeMarkerTest extends LightPlatformTestCase {
     AtomicReference<List<Integer>> minOffsets = new AtomicReference<>();
     AtomicInteger failPrinted = new AtomicInteger();
     String text = StringUtil.repeat("blah", 1000);
-    IntStream.range(0, 10_000).parallel().forEach(iter -> {
+    IntStream.range(0, 1_000).parallel().forEach(iter -> {
       DocumentEx doc = new DocumentImpl(text, true);
       List<Integer> offsets = new ArrayList<>();
 
@@ -1226,10 +1204,7 @@ public class RangeMarkerTest extends LightPlatformTestCase {
         throw e;
       }
     });
-    if (minOffsets.get() == null) {
-      System.out.println("Can't find anything, giving up");
-    }
-    else {
+    if (minOffsets.get() != null) {
       System.err.println("Moves and offsets ("+minOffsets.get().size()+"): " + minOffsets);
       fail();
     }
@@ -1412,7 +1387,7 @@ public class RangeMarkerTest extends LightPlatformTestCase {
     document = null;
 
     while (ref.get() != null) {
-      GCUtil.tryForceGC();
+      GCUtil.tryGcSoftlyReachableObjects();
       UIUtil.dispatchAllInvocationEvents();
     }
   }
@@ -1430,7 +1405,7 @@ public class RangeMarkerTest extends LightPlatformTestCase {
 
     String newText = "0123blah";
     WriteCommandAction.runWriteCommandAction(getProject(), (ThrowableComputable<Object, IOException>)()->{
-      vf.setBinaryContent(newText.getBytes("utf-8"));
+      vf.setBinaryContent(newText.getBytes(StandardCharsets.UTF_8));
       return null;
     });
 
@@ -1456,7 +1431,7 @@ public class RangeMarkerTest extends LightPlatformTestCase {
     persistentMarker[0] = null;
     PsiDocumentManager.getInstance(getProject()).commitAllDocuments();
     while (markerRef.get() != null || persistentMarkerRef.get() != null) {
-      GCUtil.tryForceGC();
+      GCUtil.tryGcSoftlyReachableObjects();
       UIUtil.dispatchAllInvocationEvents();
     }
 

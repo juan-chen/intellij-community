@@ -52,13 +52,13 @@ class ProjectData {
       @Override
       public void processStarted(@NotNull String executorId, @NotNull ExecutionEnvironment env, @NotNull ProcessHandler handler) {
         // System.out.println("processStarted: " + executorId);
-        if (executorId.equals(ToolWindowId.DEBUG))
+        if (ToolWindowId.DEBUG.equals(env.getExecutor().getToolWindowId()))
           myActiveDebugSessions.incrementAndGet();
       }
       @Override
       public void processTerminated(@NotNull String executorId, @NotNull ExecutionEnvironment env, @NotNull ProcessHandler handler, int exitCode) {
         // System.out.println("processTerminated: " + executorId);
-        if (executorId.equals(ToolWindowId.DEBUG)) {
+        if (ToolWindowId.DEBUG.equals(env.getExecutor().getToolWindowId())) {
           final int val = myActiveDebugSessions.decrementAndGet();
           if (val < 0) {
             LOG.error("received 'processTerminated' when no process wasn't started");
@@ -71,8 +71,6 @@ class ProjectData {
     //
     // Listen ToolWindowManager
     //
-    final ToolWindowManagerEx twm = ToolWindowManagerEx.getInstanceEx(myProject);
-
     myProject.getMessageBus().connect().subscribe(ToolWindowManagerListener.TOPIC, new ToolWindowManagerListener() {
       @Override
       public void stateChanged() {
@@ -122,7 +120,7 @@ class ProjectData {
   @Nullable BarContainer get(BarType type) {
     BarContainer result = myPermanentBars.get(type);
     if (result == null) {
-      result = new BarContainer(type, TouchBar.EMPTY, null);
+      result = new BarContainer(type, TouchBar.EMPTY, null, null);
       _fillBarContainer(result);
       myPermanentBars.put(type, result);
     }
@@ -140,7 +138,7 @@ class ProjectData {
     return false;
   }
 
-  @Nullable BarContainer findByComponent(Component child) {
+  @Nullable EditorData findEditorDataByComponent(Component child) {
     ApplicationManager.getApplication().assertIsDispatchThread();
 
     for (EditorData editorData : myEditors.values()) {
@@ -148,12 +146,18 @@ class ProjectData {
       if (child == ecmp || SwingUtilities.isDescendingFrom(child, ecmp)) {
         // System.out.println("focused header: " + ecmp);
         if (editorData.containerSearch == null) {
-          LOG.error("focused header of editor: " + editorData.editor + ", but BarContainer wasn't created, header: " + ecmp);
+          // System.out.println("focused header of editor '" + editorData.editor + "', but BarContainer wasn't created (seems that ui-component doesn't contain actions for touchbar), header: " + ecmp);
           continue;
         }
-        return editorData.containerSearch;
+        return editorData;
       }
     }
+
+    return null;
+  }
+
+  @Nullable BarContainer findDebugToolWindowByComponent(Component child) {
+    ApplicationManager.getApplication().assertIsDispatchThread();
 
     if (myActiveDebugSessions.get() <= 0)
       return null;
@@ -272,12 +276,16 @@ class ProjectData {
 
   int getDbgSessions() { return myActiveDebugSessions.get(); }
 
+  static long getUsedKeyMask() { return InputEvent.ALT_DOWN_MASK | InputEvent.META_DOWN_MASK | InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK; }
+
   private static long _str2mask(@NotNull String modifierId) {
     if (!modifierId.contains(".")) {
       if (modifierId.equalsIgnoreCase("alt"))
         return InputEvent.ALT_DOWN_MASK;
       if (modifierId.equalsIgnoreCase("cmd"))
         return InputEvent.META_DOWN_MASK;
+      if (modifierId.equalsIgnoreCase("ctrl"))
+        return InputEvent.CTRL_DOWN_MASK;
       if (modifierId.equalsIgnoreCase("shift"))
         return InputEvent.SHIFT_DOWN_MASK;
       return 0;
@@ -333,7 +341,7 @@ class ProjectData {
     }
 
     @Override
-    public void contentAdded(ContentManagerEvent event) {
+    public void contentAdded(@NotNull ContentManagerEvent event) {
       ApplicationManager.getApplication().assertIsDispatchThread();
 
       final Content content = event.getContent();
@@ -367,12 +375,12 @@ class ProjectData {
     }
 
     @Override
-    public void contentRemoved(ContentManagerEvent event) { _removeContent(event.getContent()); }
+    public void contentRemoved(@NotNull ContentManagerEvent event) { _removeContent(event.getContent()); }
 
     @Override
-    public void contentRemoveQuery(ContentManagerEvent event) {}
+    public void contentRemoveQuery(@NotNull ContentManagerEvent event) {}
     @Override
-    public void selectionChanged(ContentManagerEvent event) {}
+    public void selectionChanged(@NotNull ContentManagerEvent event) {}
 
     private void _registerContent(@NotNull Content content, @NotNull ActionGroup optActions) {
       ApplicationManager.getApplication().assertIsDispatchThread();

@@ -42,13 +42,13 @@ public class ConfigurationModuleSelector {
   /** this field is {@code null} if and only if {@link #myModulesList} is not null */
   private final ModuleDescriptionsComboBox myModulesDescriptionsComboBox;
   /** this field is {@code null} if and only if {@link #myModulesDescriptionsComboBox} is not null */
-  private final JComboBox<Module> myModulesList;
+  private final JComboBox<? extends Module> myModulesList;
 
   /**
    * @deprecated use {@link #ConfigurationModuleSelector(Project, ModulesComboBox)} instead
    */
   @Deprecated
-  public ConfigurationModuleSelector(final Project project, final JComboBox<Module> modulesList) {
+  public ConfigurationModuleSelector(final Project project, final JComboBox<? extends Module> modulesList) {
     this(project, modulesList, NO_MODULE_TEXT);
   }
 
@@ -78,11 +78,12 @@ public class ConfigurationModuleSelector {
    * @deprecated use {@link #ConfigurationModuleSelector(Project, ModulesComboBox, String)} instead
    */
   @Deprecated
-  public ConfigurationModuleSelector(final Project project, final JComboBox<Module> modulesList, final String noModule) {
+  public ConfigurationModuleSelector(final Project project, final JComboBox<? extends Module> modulesList, final String noModule) {
     myProject = project;
     myModulesList = modulesList;
     myModulesDescriptionsComboBox = null;
     new ComboboxSpeedSearch(modulesList){
+      @Override
       protected String getElementText(Object element) {
         if (element instanceof Module){
           return ((Module)element).getName();

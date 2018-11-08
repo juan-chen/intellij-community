@@ -3,6 +3,7 @@ package com.intellij.execution.configurations;
 
 import com.intellij.execution.CommandLineUtil;
 import com.intellij.execution.ExecutionException;
+import com.intellij.execution.IllegalEnvVarException;
 import com.intellij.execution.Platform;
 import com.intellij.execution.process.ProcessNotCreatedException;
 import com.intellij.ide.IdeBundle;
@@ -101,6 +102,19 @@ public class GeneralCommandLine implements UserDataHolder {
         addParameters(command.subList(1, size));
       }
     }
+  }
+
+  protected GeneralCommandLine(@NotNull GeneralCommandLine original) {
+    myExePath = original.myExePath;
+    myWorkDirectory = original.myWorkDirectory;
+    myEnvParams.putAll(original.myEnvParams);
+    myParentEnvironmentType = original.myParentEnvironmentType;
+    original.myProgramParams.copyTo(myProgramParams);
+    myCharset = original.myCharset;
+    myRedirectErrorStream = original.myRedirectErrorStream;
+    myInputFile = original.myInputFile;
+    // this is intentional memory waste, to avoid warning suppression. We should not copy UserData, but can't suppress a warning for a single field
+    myUserData = ContainerUtil.newHashMap();
   }
 
   @NotNull
@@ -370,6 +384,12 @@ public class GeneralCommandLine implements UserDataHolder {
       throw e;
     }
 
+    for (Map.Entry<String, String> entry : myEnvParams.entrySet()) {
+      String name = entry.getKey(), value = entry.getValue();
+      if (!EnvironmentUtil.isValidName(name)) throw new IllegalEnvVarException(IdeBundle.message("run.configuration.invalid.env.name", name));
+      if (!EnvironmentUtil.isValidValue(value)) throw new IllegalEnvVarException(IdeBundle.message("run.configuration.invalid.env.value", name, value));
+    }
+
     String exePath = myExePath;
     if (SystemInfo.isMac && myParentEnvironmentType == ParentEnvironmentType.CONSOLE && exePath.indexOf(File.pathSeparatorChar) == -1) {
       String systemPath = System.getenv("PATH");
@@ -491,20 +511,6 @@ public class GeneralCommandLine implements UserDataHolder {
   private static class MyTHashMap extends THashMap<String, String> {
     private MyTHashMap() {
       super(SystemInfo.isWindows ? CaseInsensitiveStringHashingStrategy.INSTANCE : ContainerUtil.canonicalStrategy());
-    }
-
-    @Override
-    public String put(String key, String value) {
-      if (key == null || value == null) {
-        LOG.error(new Exception("Nulls are not allowed"));
-        return null;
-      }
-      if (key.isEmpty()) {
-        // Windows: passing an environment variable with empty name causes "CreateProcess error=87, The parameter is incorrect"
-        LOG.warn("Skipping environment variable with empty name, value: " + value);
-        return null;
-      }
-      return super.put(key, value);
     }
 
     @Override

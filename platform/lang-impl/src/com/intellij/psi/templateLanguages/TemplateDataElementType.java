@@ -93,7 +93,7 @@ public class TemplateDataElementType extends IFileElementType implements ITempla
 
     return DebugUtil.performPsiModification("template language parsing", () -> {
       prepareParsedTemplateFile(templateFileElement);
-      insertOuters(templateFileElement, sourceCode, collector, charTable);
+      insertOuterElementsAndRemoveRanges(templateFileElement, sourceCode, collector, charTable);
 
       TreeElement childNode = templateFileElement.getFirstChildNode();
 
@@ -116,14 +116,13 @@ public class TemplateDataElementType extends IFileElementType implements ITempla
   }
 
   /**
-   * Creates psi tree without template tokens. Can contain additional elements.
+   * Creates psi tree without template tokens. The result PsiFile can contain additional elements.
    * Ranges of the removed tokens/additional elements should be stored in the rangeCollector
    *
-   * @param psiFile              chameleon's psi file
-   * @param templateLanguage     template language to parse
-   * @param sourceCode           source code: base language with template language
-   * @param viewProvider         multi-tree view provider
-   * @param rangeCollector collector for ranges with non-template/additional elements   
+   * @param psiFile          chameleon's psi file
+   * @param templateLanguage template language to parse
+   * @param sourceCode       source code: base language with template language
+   * @param rangeCollector   collector for ranges with non-template/additional elements
    * @return template psiFile
    */
   protected PsiFile createTemplateFile(final PsiFile psiFile,
@@ -136,12 +135,12 @@ public class TemplateDataElementType extends IFileElementType implements ITempla
   }
 
   /**
-   * Creates source code without template tokens. Can contain additional symbols.
-   * Ranges of the removed tokens/additional symbols should be stored in the rangeCollector
+   * Creates source code without template tokens. May add additional pieces of code.
+   * Ranges of such additions should be added in rangeCollector using {@link RangeCollector#addRangeToRemove(TextRange)}for later removal from the resulting tree
    *
-   * @param sourceCode           source code with base and template languages
-   * @param baseLexer            base language lexer
-   * @param rangeCollector collector for ranges with non-template/additional symbols   
+   * @param sourceCode     source code with base and template languages
+   * @param baseLexer      base language lexer
+   * @param rangeCollector collector for ranges with non-template/additional symbols
    * @return template source code
    */
   protected CharSequence createTemplateText(@NotNull CharSequence sourceCode,
@@ -183,29 +182,31 @@ public class TemplateDataElementType extends IFileElementType implements ITempla
 
 
   /**
-   * 
+   * Builds the merged tree with inserting outer language elements and removing additional elements according to the ranges from rangeCollector
+   *
    * @param templateFileElement parsed template data language file without outer elements and with possible custom additions
-   * @param sourceCode original source code (include template data language and template language)
-   * @param rangeCollector collector for ranges with non-template/additional elements
+   * @param sourceCode          original source code (include template data language and template language)
+   * @param rangeCollector      collector for ranges with non-template/additional elements
    */
-  private void insertOuters(@NotNull TreeElement templateFileElement,
-                            @NotNull CharSequence sourceCode,
-                            @NotNull RangeCollector rangeCollector,
-                            @NotNull CharTable charTable) {
+  private void insertOuterElementsAndRemoveRanges(@NotNull TreeElement templateFileElement,
+                                                  @NotNull CharSequence sourceCode,
+                                                  @NotNull RangeCollector rangeCollector,
+                                                  @NotNull CharTable charTable) {
     TreePatcher templateTreePatcher = TREE_PATCHER.forLanguage(templateFileElement.getPsi().getLanguage());
 
     LeafElement currentLeaf = TreeUtil.findFirstLeaf(templateFileElement);
-    
+
     //we use manual offset counter because node.getStartOffset() is expensive here 
     int currentLeafOffset = 0;
 
     for (TextRange rangeToProcess: rangeCollector.myOuterAndRemoveRanges) {
+      int rangeStartOffset = rangeToProcess.getStartOffset();
+
       while (currentLeaf != null &&
-             currentLeafOffset < rangeToProcess.getStartOffset() &&
+             currentLeafOffset < rangeStartOffset &&
              !shouldRemoveRangeInsideLeaf(currentLeaf, currentLeafOffset, rangeToProcess)) {
         currentLeafOffset += currentLeaf.getTextLength();
 
-        int rangeStartOffset = rangeToProcess.getStartOffset();
         if (currentLeafOffset > rangeStartOffset) {
           int splitOffset = currentLeaf.getTextLength() - (currentLeafOffset - rangeStartOffset);
           currentLeaf = templateTreePatcher.split(currentLeaf, splitOffset, charTable);
@@ -221,16 +222,16 @@ public class TemplateDataElementType extends IFileElementType implements ITempla
       else {
         if (currentLeaf == null) {
           insertLastOuterElementForRange((CompositeElement)templateFileElement, rangeToProcess, sourceCode, rangeCollector, charTable);
-          break;
         }
-
-        currentLeaf = insertOuterElementFromRange(currentLeaf, rangeToProcess, sourceCode, templateTreePatcher, charTable);
+        else {
+          currentLeaf = insertOuterElementFromRange(currentLeaf, rangeToProcess, sourceCode, templateTreePatcher, charTable);
+        }
       }
     }
 
     if (ApplicationManager.getApplication().isUnitTestMode()) {
       String after = templateFileElement.getText();
-      assert after.contentEquals(sourceCode) : 
+      assert after.contentEquals(sourceCode) :
         "Text presentation for the new tree must be the same: \nbefore: " + sourceCode + "\nafter: " + after;
     }
   }
@@ -251,7 +252,6 @@ public class TemplateDataElementType extends IFileElementType implements ITempla
     templateFileElement.rawAddChildren(
       createOuterLanguageElement(charTable.intern(outerElementRange.subSequence(sourceCode)), myOuterElementType)
     );
-    templateFileElement.subtreeChanged();
   }
 
   @NotNull
@@ -263,9 +263,7 @@ public class TemplateDataElementType extends IFileElementType implements ITempla
       createOuterLanguageElement(charTable.intern(outerElementRange.subSequence(sourceCode)), myOuterElementType);
     CompositeElement parent = currentLeaf.getTreeParent();
     templateTreePatcher.insert(parent, currentLeaf, newLeaf);
-    parent.subtreeChanged();
-    currentLeaf = newLeaf;
-    return currentLeaf;
+    return newLeaf;
   }
 
   @Nullable
@@ -288,14 +286,15 @@ public class TemplateDataElementType extends IFileElementType implements ITempla
     for (TreeElement element: leavesToRemove) {
       element.rawRemove();
     }
-
-    if (nextLeaf != null) {
-      nextLeaf.getTreeParent().subtreeChanged();
-    }
-
     return nextLeaf;
   }
 
+  /**
+   * Removes part the nextLeaf that intersects rangeToRemove.
+   * If nextLeaf doesn't intersect rangeToRemove the method returns the nextLeaf without changes
+   *
+   * @return new leaf after removing the range or original nextLeaf if nothing changed
+   */
   @Nullable
   private static LeafElement splitOrRemoveRangeInsideLeafIfOverlap(@Nullable LeafElement nextLeaf,
                                                                    int nextLeafStartOffset,
@@ -308,11 +307,16 @@ public class TemplateDataElementType extends IFileElementType implements ITempla
     if (rangeToRemove.getStartOffset() > nextLeafStartOffset) {
       return templateTreePatcher.removeRange(nextLeaf, rangeToRemove.shiftLeft(nextLeafStartOffset), charTable);
     }
-    
+
     int offsetToSplit = rangeToRemove.getEndOffset() - nextLeafStartOffset;
     return removeLeftPartOfLeaf(nextLeaf, offsetToSplit, templateTreePatcher, charTable);
   }
 
+  /**
+   * Splits the node according to the offsetToSplit and remove left leaf
+   *
+   * @return right part of the split node
+   */
   @NotNull
   private static LeafElement removeLeftPartOfLeaf(@NotNull LeafElement nextLeaf,
                                                   int offsetToSplit,
@@ -389,22 +393,22 @@ public class TemplateDataElementType extends IFileElementType implements ITempla
   }
 
   /**
-   * This collector is used for storing ranges with outer elements and ranges for removing
-   * At the time of creating source code for the data language we need to memorize positions with template language elements. 
+   * This collector is used for storing ranges of outer elements and ranges of artificial elements, that should be stripped from the resulting tree
+   * At the time of creating source code for the data language we need to memorize positions with template language elements.
    * For such positions we use {@link RangeCollector#addOuterRange}
-   * <br>
-   * Sometimes for build more correct tree we want to insert into the data language source code additional symbols (e.g. line breaks, or whitespace) 
-   * that must be removed after building the tree. 
+   * Sometimes to build a correct tree we need to insert additional symbols into resulting source:
+   * e.g. put an identifier instead of the base language fragment: {@code something={% $var %}} => {@code something=dummyidentifier}
+   * that must be removed after building the tree.
    * For such additional symbols {@link RangeCollector#addRangeToRemove} must be used
-   * Please note that all start offsets for the ranges must be in terms of "original source code"
-   * 
+   *
+   * @apiNote Please note that all start offsets for the ranges must be in terms of "original source code"
    */
   protected static class RangeCollector {
     private final List<TextRange> myOuterAndRemoveRanges = new ArrayList<>();
 
     /**
      * Adds range corresponding to the outer element inside original source code.
-     * After building the data template tree these ranges will be used for restoring outer element positions
+     * After building the data template tree these ranges will be used for inserting outer language elements
      */
     public void addOuterRange(@NotNull TextRange newRange) {
       if (newRange.isEmpty()) {
@@ -437,13 +441,8 @@ public class TemplateDataElementType extends IFileElementType implements ITempla
     }
 
     private void assertRangeOrder(@NotNull TextRange newRange) {
-      TextRange range = getLastRange();
+      TextRange range = ContainerUtil.getLastItem(myOuterAndRemoveRanges);
       assert range == null || newRange.getStartOffset() >= range.getStartOffset();
-    }
-
-    @Nullable
-    private TextRange getLastRange() {
-      return ContainerUtil.getLastItem(myOuterAndRemoveRanges);
     }
   }
 

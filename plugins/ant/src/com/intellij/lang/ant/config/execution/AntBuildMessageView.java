@@ -1,18 +1,4 @@
-/*
- * Copyright 2000-2017 JetBrains s.r.o.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.lang.ant.config.execution;
 
 import com.intellij.execution.testframework.Printable;
@@ -99,6 +85,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
   private AntBuildFileBase myBuildFile;
   private final List<String> myTargets;
   private final List<BuildFileProperty> myAdditionalProperties;
+  @AntMessage.Priority
   private int myPriorityThreshold = PRIORITY_INFO;
   private volatile int myErrorCount;
   private volatile int myWarningCount;
@@ -195,7 +182,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
     return myPriorityThreshold == PRIORITY_DEBUG;
   }
 
-  private synchronized void changeDetalizationLevel(int priorityThreshold) {
+  private synchronized void changeDetalizationLevel(@AntMessage.Priority int priorityThreshold) {
     myPriorityThreshold = priorityThreshold;
 
     TreeView.TreeSelection selection = myTreeView.getSelection();
@@ -377,7 +364,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
 
   public final class CloseAction extends CloseTabToolbarAction {
     @Override
-    public void actionPerformed(AnActionEvent e) {
+    public void actionPerformed(@NotNull AnActionEvent e) {
       close();
     }
   }
@@ -407,7 +394,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
     addCommand(new StartTaskCommand(taskName));
   }
 
-  public void outputMessage(final String text, final int priority) {
+  public void outputMessage(final String text, @AntMessage.Priority int priority) {
     final AntMessage customizedMessage = getCustomizedMessage(text, priority);
     final AntMessage message = customizedMessage != null
                                ? customizedMessage
@@ -417,7 +404,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
   }
 
   @Nullable
-  private AntMessage getCustomizedMessage(final String text, final int priority) {
+  private AntMessage getCustomizedMessage(final String text, @AntMessage.Priority int priority) {
     AntMessage customizedMessage = null;
 
     for (AntMessageCustomizer customizer : myMessageCustomizers) {
@@ -430,7 +417,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
     return customizedMessage;
   }
 
-  public void outputError(String error, int priority) {
+  public void outputError(String error, @AntMessage.Priority int priority) {
     updateErrorAndWarningCounters(priority);
     final AntMessage message = createErrorMessage(priority, error);
     addCommand(new AddMessageCommand(message));
@@ -447,7 +434,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
   }
 
 
-  private void updateErrorAndWarningCounters(int priority) {
+  private void updateErrorAndWarningCounters(@AntMessage.Priority int priority) {
     if (priority == PRIORITY_ERR) {
       myErrorCount++;
     }
@@ -465,7 +452,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
   }
 
   @Override
-  public Object getData(String dataId) {
+  public Object getData(@NotNull String dataId) {
     Object data = myCurrentView.getData(dataId);
     if (data != null) {
       return data;
@@ -479,7 +466,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
     return null;
   }
 
-  private static AntMessage createErrorMessage(int priority, String text) {
+  private static AntMessage createErrorMessage(@AntMessage.Priority int priority, String text) {
     text = StringUtil.trimStart(text, FILE_PREFIX);
 
     int afterLineNumberIndex = text.indexOf(": "); // end of file_name_and_line_number sequence
@@ -559,7 +546,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
     }
 
     @Override
-    public void contentRemoved(ContentManagerEvent event) {
+    public void contentRemoved(@NotNull ContentManagerEvent event) {
       if (event.getContent() == myContent) {
         myContentManager.removeContentManagerListener(this);
         AntBuildMessageView buildMessageView = myContent.getUserData(KEY);
@@ -575,7 +562,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
     }
 
     @Override
-    public void contentRemoveQuery(ContentManagerEvent event) {
+    public void contentRemoveQuery(@NotNull ContentManagerEvent event) {
       if (event.getContent() == myContent) {
         boolean canClose = closeQuery();
         if (!canClose) {
@@ -585,7 +572,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
     }
 
     @Override
-    public void projectClosed(Project project) {
+    public void projectClosed(@NotNull Project project) {
       if (myContent != null) {
         myContentManager.removeContent(myContent, true);
       }
@@ -637,12 +624,14 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
   }
 
   private abstract static class LogCommand {
+    @AntMessage.Priority
     private final int myPriority;
 
-    LogCommand(int priority) {
+    LogCommand(@AntMessage.Priority int priority) {
       myPriority = priority;
     }
 
+    @AntMessage.Priority
     final int getPriority() {
       return myPriority;
     }
@@ -666,7 +655,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
 
   private static final class StartBuildCommand extends MessageCommand {
     StartBuildCommand(String buildName) {
-      super(new AntMessage(MessageType.BUILD, 0, buildName, null, 0, 0));
+      super(new AntMessage(MessageType.BUILD, PRIORITY_ERR, buildName, null, 0, 0));
     }
 
     @Override
@@ -677,7 +666,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
 
   private static final class BuildFailedCommand extends MessageCommand {
     BuildFailedCommand(String buildName) {
-      super(new AntMessage(MessageType.ERROR, 0, AntBundle.message("cannot.start.build.name.error.message", buildName), null, 0, 0));
+      super(new AntMessage(MessageType.ERROR, PRIORITY_ERR, AntBundle.message("cannot.start.build.name.error.message", buildName), null, 0, 0));
     }
 
     @Override
@@ -690,7 +679,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
     private final String myFinishStatusText;
 
     FinishBuildCommand(String finishStatusText) {
-      super(0);
+      super(PRIORITY_ERR);
       myFinishStatusText = finishStatusText;
     }
 
@@ -702,7 +691,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
 
   private static final class StartTargetCommand extends MessageCommand {
     StartTargetCommand(String targetName) {
-      super(new AntMessage(MessageType.TARGET, 0, targetName, null, 0, 0));
+      super(new AntMessage(MessageType.TARGET, PRIORITY_ERR, targetName, null, 0, 0));
     }
 
     @Override
@@ -713,7 +702,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
 
   private static final class FinishTargetCommand extends LogCommand {
     FinishTargetCommand() {
-      super(0);
+      super(PRIORITY_ERR);
     }
 
     @Override
@@ -724,7 +713,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
 
   private static final class StartTaskCommand extends MessageCommand {
     StartTaskCommand(String taskName) {
-      super(new AntMessage(MessageType.TASK, 0, taskName, null, 0, 0));
+      super(new AntMessage(MessageType.TASK, PRIORITY_ERR, taskName, null, 0, 0));
     }
 
     @Override
@@ -735,7 +724,7 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
 
   private static final class FinishTaskCommand extends LogCommand {
     FinishTaskCommand() {
-      super(0);
+      super(PRIORITY_ERR);
     }
 
     @Override
@@ -956,11 +945,13 @@ public final class AntBuildMessageView extends JPanel implements DataProvider, O
     }
   }
 
+  @NotNull
   @Override
   public String getNextOccurenceActionName() {
     return myTreeView.getNextOccurenceActionName();
   }
 
+  @NotNull
   @Override
   public String getPreviousOccurenceActionName() {
     return myTreeView.getPreviousOccurenceActionName();

@@ -7,7 +7,6 @@ import com.intellij.find.FindSettings;
 import com.intellij.ide.IdeBundle;
 import com.intellij.ide.util.scopeChooser.ScopeChooserCombo;
 import com.intellij.lang.Language;
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
@@ -40,15 +39,18 @@ import com.intellij.structuralsearch.plugin.StructuralSearchPlugin;
 import com.intellij.ui.IdeBorderFactory;
 import com.intellij.ui.TitledSeparator;
 import com.intellij.util.Alarm;
+import com.intellij.util.ui.EdtInvocationManager;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NonNls;
+import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -113,7 +115,7 @@ public class SearchDialog extends DialogWrapper {
     myAlarm = new Alarm(Alarm.ThreadToUse.POOLED_THREAD, myDisposable);
     ProjectManager.getInstance().addProjectManagerListener(searchContext.getProject(), new ProjectManagerListener() {
       @Override
-      public void projectClosing(Project project) {
+      public void projectClosing(@NotNull Project project) {
         close(CANCEL_EXIT_CODE);
       }
     });
@@ -153,7 +155,7 @@ public class SearchDialog extends DialogWrapper {
 
     editor.getDocument().addDocumentListener(new DocumentListener() {
       @Override
-      public void documentChanged(final DocumentEvent event) {
+      public void documentChanged(@NotNull final DocumentEvent event) {
         initiateValidation();
       }
     });
@@ -167,7 +169,7 @@ public class SearchDialog extends DialogWrapper {
       try {
         final boolean valid = isValid();
         final boolean compiled = isCompiled();
-        ApplicationManager.getApplication().invokeLater(() -> {
+        EdtInvocationManager.getInstance().invokeLater(() -> {
           myEditVariablesButton.setEnabled(compiled);
           getOKAction().setEnabled(valid);
         });

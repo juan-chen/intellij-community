@@ -19,7 +19,6 @@ import com.intellij.codeInspection.dataFlow.rangeSet.LongRangeSet;
 import com.intellij.codeInspection.dataFlow.value.DfaConstValue;
 import com.intellij.codeInspection.dataFlow.value.DfaValue;
 import com.intellij.codeInspection.dataFlow.value.DfaValueFactory;
-import com.intellij.codeInspection.dataFlow.value.DfaVariableValue;
 import com.intellij.psi.*;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
@@ -120,7 +119,7 @@ class CustomMethodHandlers {
     catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
       return null;
     }
-    return factory.getConstFactory().createFromValue(result, returnType, null);
+    return factory.getConstFactory().createFromValue(result, returnType);
   }
 
   private static Method toJvmMethod(PsiMethod method) {
@@ -200,10 +199,10 @@ class CustomMethodHandlers {
 
   private static DfaValue ofNullable(DfaValue argument, DfaMemoryState state, DfaValueFactory factory) {
     if (state.isNull(argument)) {
-      return factory.getFactValue(DfaFactType.OPTIONAL_PRESENCE, false);
+      return DfaOptionalSupport.getOptionalValue(factory, false);
     }
     if (state.isNotNull(argument)) {
-      return factory.getFactValue(DfaFactType.OPTIONAL_PRESENCE, true);
+      return DfaOptionalSupport.getOptionalValue(factory, true);
     }
     return null;
   }
@@ -223,11 +222,9 @@ class CustomMethodHandlers {
         return fact.min();
       }
     }
-    if (value instanceof DfaVariableValue) {
-      value = memoryState.getConstantValue((DfaVariableValue)value);
-    }
-    if (value instanceof DfaConstValue) {
-      Object constant = ((DfaConstValue)value).getValue();
+    DfaConstValue dfaConst = memoryState.getConstantValue(value);
+    if (dfaConst != null) {
+      Object constant = dfaConst.getValue();
       if (constant instanceof String && ((String)constant).length() > MAX_STRING_CONSTANT_LENGTH_TO_TRACK) return null;
       return constant;
     }

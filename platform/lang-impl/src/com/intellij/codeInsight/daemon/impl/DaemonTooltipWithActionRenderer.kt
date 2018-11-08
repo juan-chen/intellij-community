@@ -150,7 +150,7 @@ internal class DaemonTooltipWithActionRenderer(text: String?,
     buttons.add(createKeymapHint(shortcutShowAllActionsText), gridBag.next().fillCellHorizontally().insets(0, 4, 0, 20))
 
     actions.add(object : AnAction() {
-      override fun actionPerformed(e: AnActionEvent?) {
+      override fun actionPerformed(e: AnActionEvent) {
         runFixAction.run()
       }
 
@@ -160,7 +160,7 @@ internal class DaemonTooltipWithActionRenderer(text: String?,
     })
 
     actions.add(object : AnAction() {
-      override fun actionPerformed(e: AnActionEvent?) {
+      override fun actionPerformed(e: AnActionEvent) {
         showAllFixes.run()
       }
 
@@ -186,7 +186,7 @@ internal class DaemonTooltipWithActionRenderer(text: String?,
 
         graphics2D.fill(RoundRectangle2D.Double(1.0, 0.0, bounds.width - 2.5, (bounds.height / 2).toDouble(), 0.0, 0.0))
 
-        val arc = BalloonImpl.ARC.toDouble()
+        val arc = BalloonImpl.ARC.get().toDouble()
         val double = RoundRectangle2D.Double(1.0, 0.0, bounds.width - 2.5, (bounds.height - 1).toDouble(), arc, arc)
 
         graphics2D.fill(double)
@@ -271,7 +271,7 @@ internal class DaemonTooltipWithActionRenderer(text: String?,
     val settingsButton = object : ActionButton(actionGroup, presentation, ActionPlaces.UNKNOWN, Dimension(18, 18)) {
       override fun paintComponent(g: Graphics?) {
         val state = popState
-        if (state == ActionButtonComponent.POPPED) {
+        if (state == ActionButtonComponent.POPPED && UIUtil.isUnderDarcula()) {
           val look = buttonLook
           look.paintBackground(g!!, this, getSettingsIconHoverBackgroundColor())
           look.paintIcon(g, this, icon)
@@ -358,7 +358,7 @@ fun createActionLabel(text: String, action: Runnable, background: Color): Hyperl
 }
 
 private fun getKeymapColor(): Color {
-  return JBColor.namedColor("tooltips.actions.keymap.text.color", JBColor(0x99a4ad, 0x919191))
+  return JBColor.namedColor("ToolTip.Actions.grayForeground", JBColor(0x99a4ad, 0x919191))
 }
 
 private fun getSettingsIconHoverBackgroundColor(): Color {

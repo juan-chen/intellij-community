@@ -168,8 +168,8 @@ fun resolveConflicts(files: List<VirtualFile>, mergeProvider: MergeProvider2): L
 
   var processedFiles: List<VirtualFile>? = null
   invokeAndWaitIfNeed {
-    val fileMergeDialog = MultipleFileMergeDialog(ProjectManager.getInstance().defaultProject, files, mergeProvider, object : MergeDialogCustomizer() {
-      override fun getMultipleFileDialogTitle() = "Settings Repository: Files Merged with Conflicts"
+    val fileMergeDialog = MultipleFileMergeDialog(null, files, mergeProvider, object : MergeDialogCustomizer() {
+      override fun getMultipleFileDialogTitle() = "Settings Repository: Conflicts"
     })
     fileMergeDialog.show()
     processedFiles = fileMergeDialog.processedFiles

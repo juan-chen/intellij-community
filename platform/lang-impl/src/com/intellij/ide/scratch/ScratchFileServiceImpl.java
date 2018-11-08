@@ -17,7 +17,6 @@ import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.RoamingType;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
-import com.intellij.openapi.extensions.Extensions;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.FileEditorManagerListener;
@@ -81,11 +80,6 @@ public class ScratchFileServiceImpl extends ScratchFileService implements Persis
       }
     });
     initFileOpenedListener(application.getMessageBus());
-
-    // make sure languages are initialized to avoid PerFileMappingsBase.handleUnknownMapping()
-    for (StubElementTypeHolderEP holderEP : Extensions.getExtensions(StubElementTypeHolderEP.EP_NAME)) {
-      holderEP.initialize();
-    }
   }
 
   @NotNull
@@ -164,9 +158,21 @@ public class ScratchFileServiceImpl extends ScratchFileService implements Persis
   public void dispose() {
   }
 
+  private static class LanguageLoader {
+    static {
+      // make sure languages are initialized to avoid PerFileMappingsBase.handleUnknownMapping()
+      for (StubElementTypeHolderEP holderEP : StubElementTypeHolderEP.EP_NAME.getExtensionList()) {
+        holderEP.initialize();
+      }
+    }
+    static void ensureLoaded() {}
+  }
+
   private static class MyLanguages extends PerFileMappingsBase<Language> {
+
     @Override
     public List<Language> getAvailableValues() {
+      LanguageLoader.ensureLoaded();
       return LanguageUtil.getFileLanguages();
     }
 
@@ -184,6 +190,9 @@ public class ScratchFileServiceImpl extends ScratchFileService implements Persis
   }
 
   public static class TypeFactory extends FileTypeFactory {
+    /** @noinspection unused*/
+    public TypeFactory(ScratchFileService service) {
+    }
 
     @Override
     public void createFileTypes(@NotNull FileTypeConsumer consumer) {
@@ -315,7 +324,7 @@ public class ScratchFileServiceImpl extends ScratchFileService implements Persis
 
   @Nullable
   private static Language getLanguageByFileName(@Nullable VirtualFile file) {
-    return file == null ? null : LanguageUtil.getFileTypeLanguage(FileTypeManager.getInstance().getFileTypeByFileName(file.getName()));
+    return file == null ? null : LanguageUtil.getFileTypeLanguage(FileTypeManager.getInstance().getFileTypeByFileName(file.getNameSequence()));
   }
 
   public static class UseScopeExtension extends UseScopeEnlarger {

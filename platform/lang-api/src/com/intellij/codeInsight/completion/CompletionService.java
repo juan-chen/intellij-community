@@ -113,7 +113,7 @@ public abstract class CompletionService {
    * @param parameters Parameters specifying current completion environment
    * @param consumer This consumer will directly add lookup elements to the lookup
    */
-  public void performCompletion(final CompletionParameters parameters, final Consumer<CompletionResult> consumer) {
+  public void performCompletion(CompletionParameters parameters, Consumer<? super CompletionResult> consumer) {
     final Set<LookupElement> lookupSet = ContainerUtil.newConcurrentSet();
 
     getVariantsFromContributors(parameters, null, result -> {

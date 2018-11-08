@@ -3,6 +3,7 @@ package com.intellij.util.concurrency;
 
 import com.intellij.Patches;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.diagnostic.ControlFlowException;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.util.*;
@@ -56,7 +57,7 @@ public class BoundedTaskExecutor extends AbstractExecutorService {
   /**
    * Constructor which automatically shuts down this executor when {@code parent} is disposed.
    */
-  public BoundedTaskExecutor(@NotNull @Nls(capitalization = Nls.Capitalization.Title) String name, @NotNull Executor backendExecutor, int maxSimultaneousTasks, @NotNull Disposable parent) {
+  BoundedTaskExecutor(@NotNull @Nls(capitalization = Nls.Capitalization.Title) String name, @NotNull Executor backendExecutor, int maxSimultaneousTasks, @NotNull Disposable parent) {
     this(name, backendExecutor, maxSimultaneousTasks);
     Disposer.register(parent, new Disposable() {
       @Override
@@ -227,10 +228,12 @@ public class BoundedTaskExecutor extends AbstractExecutorService {
     }
     catch (Throwable e) {
       // do not lose queued tasks because of this exception
-      try {
-        LOG.error(e);
-      }
-      catch (Throwable ignored) {
+      if (!(e instanceof ControlFlowException)) {
+        try {
+          LOG.error(e);
+        }
+        catch (Throwable ignored) {
+        }
       }
     }
   }

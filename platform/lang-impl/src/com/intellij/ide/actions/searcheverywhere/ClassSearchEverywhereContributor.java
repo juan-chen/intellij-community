@@ -3,9 +3,12 @@ package com.intellij.ide.actions.searcheverywhere;
 
 import com.intellij.codeInsight.navigation.NavigationUtil;
 import com.intellij.ide.IdeBundle;
+import com.intellij.ide.actions.GotoActionBase;
 import com.intellij.ide.actions.GotoClassAction;
+import com.intellij.ide.actions.GotoClassPresentationUpdater;
 import com.intellij.ide.util.gotoByName.FilteringGotoByModel;
 import com.intellij.ide.util.gotoByName.GotoClassModel2;
+import com.intellij.ide.util.gotoByName.GotoClassSymbolConfiguration;
 import com.intellij.lang.DependentLanguage;
 import com.intellij.lang.Language;
 import com.intellij.lang.LanguageUtil;
@@ -32,14 +35,15 @@ import java.util.stream.Collectors;
  */
 public class ClassSearchEverywhereContributor extends AbstractGotoSEContributor<Language> {
 
-  public ClassSearchEverywhereContributor(Project project) {
-    super(project);
+  public ClassSearchEverywhereContributor(@Nullable Project project, @Nullable PsiElement context) {
+    super(project, context);
   }
 
   @NotNull
   @Override
   public String getGroupName() {
-    return "Classes";
+    String[] split = GotoClassPresentationUpdater.getActionTitle().split("/");
+    return StringUtil.pluralize(split[0]) + (split.length > 1 ? " +" : "");
   }
 
   @Override
@@ -52,13 +56,15 @@ public class ClassSearchEverywhereContributor extends AbstractGotoSEContributor<
     return 100;
   }
 
+  @NotNull
   @Override
-  protected FilteringGotoByModel<Language> createModel(Project project) {
+  protected FilteringGotoByModel<Language> createModel(@NotNull Project project) {
     return new GotoClassModel2(project);
   }
 
+  @NotNull
   @Override
-  public String filterControlSymbols(String pattern) {
+  public String filterControlSymbols(@NotNull String pattern) {
     if (pattern.indexOf('#') != -1) {
       pattern = applyPatternFilter(pattern, patternToDetectMembers);
     }
@@ -68,6 +74,16 @@ public class ClassSearchEverywhereContributor extends AbstractGotoSEContributor<
     }
 
     return super.filterControlSymbols(pattern);
+  }
+
+  @Override
+  public int getElementPriority(@NotNull Object element, @NotNull String searchPattern) {
+    return super.getElementPriority(element, searchPattern) + 5;
+  }
+
+  @Override
+  public boolean isDumbModeSupported() {
+    return false;
   }
 
   @Override
@@ -152,18 +168,24 @@ public class ClassSearchEverywhereContributor extends AbstractGotoSEContributor<
     @NotNull
     @Override
     public SearchEverywhereContributor<Language> createContributor(AnActionEvent initEvent) {
-      return new ClassSearchEverywhereContributor(initEvent.getProject());
+      return new ClassSearchEverywhereContributor(initEvent.getProject(), GotoActionBase.getPsiContext(initEvent));
     }
 
     @Nullable
     @Override
-    public SearchEverywhereContributorFilter<Language> createFilter() {
+    public SearchEverywhereContributorFilter<Language> createFilter(AnActionEvent initEvent) {
+      Project project = initEvent.getProject();
+      if (project == null) {
+        return null;
+      }
+
       List<Language> items = Language.getRegisteredLanguages()
                                      .stream()
                                      .filter(lang -> lang != Language.ANY && !(lang instanceof DependentLanguage))
                                      .sorted(LanguageUtil.LANGUAGE_COMPARATOR)
                                      .collect(Collectors.toList());
-      return new SearchEverywhereContributorFilterImpl<>(items, LANGUAGE_NAME_EXTRACTOR, LANGUAGE_ICON_EXTRACTOR);
+      GotoClassSymbolConfiguration persistentConfig = GotoClassSymbolConfiguration.getInstance(project);
+      return new PersistentSearchEverywhereContributorFilter<>(items, persistentConfig, LANGUAGE_NAME_EXTRACTOR, LANGUAGE_ICON_EXTRACTOR);
     }
   }
 }

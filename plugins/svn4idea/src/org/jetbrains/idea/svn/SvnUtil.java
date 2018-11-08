@@ -201,6 +201,7 @@ public class SvnUtil {
         }
       }
 
+      @Override
       public void checkCancelled() {
       }
     };
@@ -263,6 +264,7 @@ public class SvnUtil {
         }
       }
 
+      @Override
       public void checkCancelled() {
       }
     };
@@ -307,14 +309,14 @@ public class SvnUtil {
   }
 
   @NotNull
-  public static MultiMap<Pair<Url, WorkingCopyFormat>, Change> splitChangesIntoWc(@NotNull SvnVcs vcs, @NotNull List<Change> changes) {
+  public static MultiMap<Pair<Url, WorkingCopyFormat>, Change> splitChangesIntoWc(@NotNull SvnVcs vcs, @NotNull List<? extends Change> changes) {
     return splitIntoRepositoriesMap(vcs, changes, change -> ChangesUtil.getFilePath(change));
   }
 
   @NotNull
   public static <T> MultiMap<Pair<Url, WorkingCopyFormat>, T> splitIntoRepositoriesMap(@NotNull final SvnVcs vcs,
-                                                                                       @NotNull Collection<T> items,
-                                                                                       @NotNull final Convertor<T, FilePath> converter) {
+                                                                                       @NotNull Collection<? extends T> items,
+                                                                                       @NotNull final Convertor<? super T, ? extends FilePath> converter) {
     return ContainerUtil.groupBy(items, item -> {
       RootUrlInfo path = vcs.getSvnFileUrlMapping().getWcRootForFilePath(converter.convert(item).getIOFile());
 
@@ -771,7 +773,7 @@ public class SvnUtil {
       ensureTempFolder();
     }
 
-    public SqLiteJdbcWorkingCopyFormatOperation(@NotNull File dbFile) {
+    SqLiteJdbcWorkingCopyFormatOperation(@NotNull File dbFile) {
       myDbFile = dbFile;
     }
 

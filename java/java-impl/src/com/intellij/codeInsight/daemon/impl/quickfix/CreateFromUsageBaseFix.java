@@ -305,6 +305,7 @@ public abstract class CreateFromUsageBaseFix extends BaseIntentionAction {
           }
         }
       }
+      qualifier = newExpression.getQualifier();
     }
     else if (element instanceof PsiReferenceExpression) {
       qualifier = ((PsiReferenceExpression)element).getQualifierExpression();
@@ -381,7 +382,7 @@ public abstract class CreateFromUsageBaseFix extends BaseIntentionAction {
     }
   }
 
-  private void collectSupers(PsiClass psiClass, ArrayList<PsiClass> classes) {
+  private void collectSupers(PsiClass psiClass, ArrayList<? super PsiClass> classes) {
     classes.add(psiClass);
 
     final PsiClass[] supers = psiClass.getSupers();
@@ -425,7 +426,7 @@ public abstract class CreateFromUsageBaseFix extends BaseIntentionAction {
   public static void setupGenericParameters(PsiClass targetClass, PsiJavaCodeReferenceElement ref) {
     int numParams = ref.getTypeParameters().length;
     if (numParams == 0) return;
-    final PsiElementFactory factory = JavaPsiFacade.getInstance(ref.getProject()).getElementFactory();
+    final PsiElementFactory factory = JavaPsiFacade.getElementFactory(ref.getProject());
     final Set<String> typeParamNames = new HashSet<>();
     for (PsiType type : ref.getTypeParameters()) {
       final PsiClass psiClass = PsiUtil.resolveClassInType(type);

@@ -34,26 +34,12 @@
     </component>
 
     <component>
-      <implementation-class>com.intellij.openapi.roots.impl.libraries.LibraryKindLoader</implementation-class>
-    </component>
-
-    <component>
       <implementation-class>com.intellij.codeInsight.preview.ImageOrColorPreviewManager</implementation-class>
       <headless-implementation-class/>
     </component>
-
-    <component>
-      <implementation-class>com.intellij.ide.script.IdeStartupScripts</implementation-class>
-    </component>
-
   </application-components>
 
   <project-components>
-    <component>
-      <interface-class>com.intellij.codeInsight.highlighting.HighlightManager</interface-class>
-      <implementation-class>com.intellij.codeInsight.highlighting.HighlightManagerImpl</implementation-class>
-    </component>
-
     <component>
       <interface-class>com.intellij.openapi.roots.ProjectRootManager</interface-class>
       <implementation-class>com.intellij.openapi.roots.impl.ProjectRootManagerComponent</implementation-class>
@@ -82,7 +68,7 @@
     </component>
     <component>
       <interface-class>com.intellij.openapi.module.impl.ExternalModuleListStorage</interface-class>
-      <implementation-class>com.intellij.openapi.module.impl.ExternalModuleListStorage</implementation-class>
+      <implementation-class>com.intellij.openapi.module.impl.ExternalModuleListStorageImpl</implementation-class>
       <loadForDefaultProject/>
     </component>
 
@@ -162,6 +148,9 @@
       <implementation-class>com.intellij.codeInsight.daemon.impl.CodeFoldingPassFactory</implementation-class>
     </component>
     <component>
+      <implementation-class>com.intellij.codeInsight.daemon.impl.focusMode.FocusModePassFactory</implementation-class>
+    </component>
+    <component>
       <implementation-class>com.intellij.codeInsight.hints.ParameterHintsPassFactory</implementation-class>
     </component>
     <component>
@@ -238,6 +227,8 @@
   </module-components>
 
   <extensions defaultExtensionNs="com.intellij">
+    <applicationInitializedListener implementation="com.intellij.openapi.roots.impl.libraries.LibraryKindLoader"/>
+    <applicationInitializedListener implementation="com.intellij.ide.script.IdeStartupScripts"/>
     <projectService serviceInterface="com.intellij.codeInsight.daemon.impl.IntentionsUI"
                     serviceImplementation="com.intellij.codeInsight.daemon.impl.IntentionsUIImpl"/>
   </extensions>

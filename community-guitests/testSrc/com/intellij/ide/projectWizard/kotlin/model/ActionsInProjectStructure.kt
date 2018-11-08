@@ -2,12 +2,11 @@
 package com.intellij.ide.projectWizard.kotlin.model
 
 import com.intellij.testGuiFramework.impl.jTree
-import com.intellij.testGuiFramework.impl.selectWithKeyboard
-import com.intellij.testGuiFramework.util.logError
 import com.intellij.testGuiFramework.util.logUIStep
-import com.intellij.testGuiFramework.util.scenarios.*
-
-const val localTimeout = 2L // default timeout is 2 minutes and it's too big for most of tasks here
+import com.intellij.testGuiFramework.util.scenarios.ProjectStructureDialogModel
+import com.intellij.testGuiFramework.util.scenarios.checkLibraryPresent
+import com.intellij.testGuiFramework.util.scenarios.checkModule
+import org.fest.swing.exception.ComponentLookupException
 
 // Attention: it's supposed that Project Structure dialog is open both before the function
 // executed and after
@@ -15,12 +14,13 @@ fun ProjectStructureDialogModel.checkFacetInOneModule(expectedFacet: FacetStruct
   checkModule {
     with(guiTestCase) {
       try {
-        jTree(path[0], timeout = localTimeout).selectWithKeyboard(this, *path)
+        jTree(*path).clickPath()
         logUIStep("Check facet for module `${path.joinToString(" -> ")}`")
         (this as KotlinGuiTestCase).checkFacetState(expectedFacet)
       }
-      catch (e: Exception) {
-        guiTestCase.logError("Kotlin facet for module `${path.joinToString(" -> ")}` not found")
+      catch (e: ComponentLookupException) {
+        val errorMessage = "Kotlin facet for module `${path.joinToString(" -> ")}` not found"
+        throw IllegalStateException(errorMessage, e as Throwable)
       }
     }
   }

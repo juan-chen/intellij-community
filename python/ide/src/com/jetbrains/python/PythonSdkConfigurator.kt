@@ -39,12 +39,14 @@ class PythonSdkConfigurator : DirectoryProjectConfigurator {
     private fun findExistingSystemWideSdk(existingSdks: List<Sdk>) =
       existingSdks.filter { it.isSystemWide }.sortedWith(PreferredSdkComparator.INSTANCE).firstOrNull()
 
-    private fun findDetectedSystemWideSdk(existingSdks: List<Sdk>) =
-      detectSystemWideSdks(existingSdks).firstOrNull()
+    private fun findDetectedSystemWideSdk(module: Module?, existingSdks: List<Sdk>) =
+      detectSystemWideSdks(module, existingSdks).firstOrNull()
   }
 
   override fun configureProject(project: Project?, baseDir: VirtualFile, moduleRef: Ref<Module>?) {
-    if (project == null || project.pythonSdk != null) {
+    if (project == null ||
+        project.pythonSdk != null ||
+        baseDir.children?.any { it.name != Project.DIRECTORY_STORE_FOLDER } == false) {
       return
     }
     val module = ModuleManager.getInstance(project).modules.firstOrNull() ?: return
@@ -58,7 +60,7 @@ class PythonSdkConfigurator : DirectoryProjectConfigurator {
     findDetectedAssociatedEnvironment(module, existingSdks)?.let {
       val newSdk = it.setupAssociated(existingSdks, module.basePath) ?: return
       SdkConfigurationUtil.addSdk(newSdk)
-      newSdk.associateWithModule(module, false)
+      newSdk.associateWithModule(module, null)
       SdkConfigurationUtil.setDirectoryProjectSdk(project, newSdk)
       return
     }
@@ -75,7 +77,7 @@ class PythonSdkConfigurator : DirectoryProjectConfigurator {
       return
     }
 
-    findDetectedSystemWideSdk(existingSdks)?.let {
+    findDetectedSystemWideSdk(module, existingSdks)?.let {
       SdkConfigurationUtil.createAndAddSDK(it.homePath, PythonSdkType.getInstance())?.apply {
         SdkConfigurationUtil.setDirectoryProjectSdk(project, this)
       }

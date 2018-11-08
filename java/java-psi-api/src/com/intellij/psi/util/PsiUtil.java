@@ -186,7 +186,7 @@ public final class PsiUtil extends PsiUtilCore {
           ref.delete();
         }
         else {
-          PsiElementFactory factory = JavaPsiFacade.getInstance(method.getProject()).getElementFactory();
+          PsiElementFactory factory = JavaPsiFacade.getElementFactory(method.getProject());
           PsiJavaCodeReferenceElement ref1;
           if (exceptionName != null) {
             ref1 = factory.createReferenceElementByFQClassName(exceptionName, method.getResolveScope());
@@ -205,7 +205,7 @@ public final class PsiUtil extends PsiUtilCore {
     }
     if (replaced) return;
 
-    PsiElementFactory factory = JavaPsiFacade.getInstance(method.getProject()).getElementFactory();
+    PsiElementFactory factory = JavaPsiFacade.getElementFactory(method.getProject());
     PsiJavaCodeReferenceElement ref;
     if (exceptionName != null) {
       ref = factory.createReferenceElementByFQClassName(exceptionName, method.getResolveScope());
@@ -810,7 +810,7 @@ public final class PsiUtil extends PsiUtilCore {
           }
 
           if (substitutionMap != null) {
-            final PsiElementFactory factory = JavaPsiFacade.getInstance(aClass.getProject()).getElementFactory();
+            final PsiElementFactory factory = JavaPsiFacade.getElementFactory(aClass.getProject());
             final PsiSubstitutor newSubstitutor = factory.createSubstitutor(substitutionMap);
             return factory.createType(aClass, newSubstitutor);
           }
@@ -1065,7 +1065,7 @@ public final class PsiUtil extends PsiUtilCore {
     return hasDefaultCtrInHierarchy(clazz, allowProtected, checkModifiers, null);
   }
 
-  private static boolean hasDefaultCtrInHierarchy(@NotNull PsiClass clazz, boolean allowProtected, boolean checkModifiers, @Nullable Set<PsiClass> visited) {
+  private static boolean hasDefaultCtrInHierarchy(@NotNull PsiClass clazz, boolean allowProtected, boolean checkModifiers, @Nullable Set<? super PsiClass> visited) {
     final PsiMethod[] constructors = clazz.getConstructors();
     if (constructors.length > 0) {
       for (PsiMethod cls: constructors) {
@@ -1212,7 +1212,7 @@ public final class PsiUtil extends PsiUtilCore {
     return expression;
   }
 
-  public static PsiElement skipParenthesizedExprUp(PsiElement parent) {
+  public static PsiElement skipParenthesizedExprUp(@Nullable PsiElement parent) {
     while (parent instanceof PsiParenthesizedExpression) {
       parent = parent.getParent();
     }

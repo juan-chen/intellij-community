@@ -31,6 +31,7 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.*;
 import com.intellij.psi.codeStyle.JavaCodeStyleManager;
 import com.intellij.psi.codeStyle.VariableKind;
+import com.intellij.psi.impl.FindSuperElementsHelper;
 import com.intellij.psi.javadoc.PsiDocTag;
 import com.intellij.psi.search.LocalSearchScope;
 import com.intellij.psi.search.searches.FunctionalExpressionSearch;
@@ -149,6 +150,7 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
       if (superMethods.isEmpty()) {
         superMethods.add(method);
       }
+      ContainerUtil.addAllNotNull(superMethods, FindSuperElementsHelper.getSiblingInheritedViaSubClass(method));
       for (PsiMethod superMethod : superMethods) {
         parametersToDelete.add(superMethod.getParameterList().getParameters()[parameterIndex]);
         OverridingMethodsSearch.search(superMethod).forEach(overrider -> {
@@ -563,7 +565,7 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
     return usage -> !(usage instanceof PsiFile) && isInside(usage, allElementsToDelete);
   }
 
-  private static void findClassUsages(final PsiClass psiClass, final PsiElement[] allElementsToDelete, final List<UsageInfo> usages) {
+  private static void findClassUsages(final PsiClass psiClass, final PsiElement[] allElementsToDelete, final List<? super UsageInfo> usages) {
     final boolean justPrivates = containsOnlyPrivates(psiClass);
     final String qualifiedName = psiClass.getQualifiedName();
     final boolean annotationType = psiClass.isAnnotationType() && qualifiedName != null;
@@ -656,7 +658,7 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
     return true;
   }
 
-  private static void findTypeParameterExternalUsages(final PsiTypeParameter typeParameter, final Collection<UsageInfo> usages) {
+  private static void findTypeParameterExternalUsages(final PsiTypeParameter typeParameter, final Collection<? super UsageInfo> usages) {
     PsiTypeParameterListOwner owner = typeParameter.getOwner();
     if (owner != null) {
       final PsiTypeParameterList parameterList = owner.getTypeParameterList();
@@ -682,7 +684,7 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
   }
 
   @Nullable
-  private static Condition<PsiElement> findMethodUsages(final PsiMethod psiMethod, final PsiElement[] allElementsToDelete, List<UsageInfo> usages) {
+  private static Condition<PsiElement> findMethodUsages(final PsiMethod psiMethod, final PsiElement[] allElementsToDelete, List<? super UsageInfo> usages) {
     final Collection<PsiReference> references = ReferencesSearch.search(psiMethod).findAll();
 
     if(psiMethod.isConstructor()) {
@@ -717,7 +719,7 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
     };
   }
 
-  private static void appendCallees(@NotNull PsiMember method, @NotNull List<UsageInfo> usages) {
+  private static void appendCallees(@NotNull PsiMember method, @NotNull List<? super UsageInfo> usages) {
     final List<PsiMember> calleesSafeToDelete = SafeDeleteJavaCalleeChooser.computeCalleesSafeToDelete(method);
     if (calleesSafeToDelete != null) {
       for (PsiMember callee : calleesSafeToDelete) {
@@ -726,7 +728,7 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
     }
   }
 
-  private static void findFunctionalExpressions(final List<UsageInfo> usages, PsiMethod... methods) {
+  private static void findFunctionalExpressions(final List<? super UsageInfo> usages, PsiMethod... methods) {
     for (PsiMethod method : methods) {
       final PsiClass containingClass = method.getContainingClass();
       FunctionalExpressionSearch.search(method).forEach(expression -> {
@@ -754,7 +756,7 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
   }
 
   @Nullable
-  private static Condition<PsiElement> findConstructorUsages(PsiMethod constructor, Collection<PsiReference> originalReferences, List<UsageInfo> usages,
+  private static Condition<PsiElement> findConstructorUsages(PsiMethod constructor, Collection<PsiReference> originalReferences, List<? super UsageInfo> usages,
                                                              final PsiElement[] allElementsToDelete) {
     if (isTheOnlyEmptyDefaultConstructor(constructor)) return null;
 
@@ -798,10 +800,10 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
     return constructor.getContainingClass().getConstructors().length == 1;
   }
 
-  private static Set<PsiMethod> validateOverridingMethods(PsiMethod originalMethod, final Collection<PsiReference> originalReferences,
-                                                   Collection<PsiMethod> overridingMethods, Map<PsiMethod, Collection<PsiReference>> methodToReferences,
-                                                   List<UsageInfo> usages,
-                                                   final PsiElement[] allElementsToDelete) {
+  private static Set<PsiMethod> validateOverridingMethods(PsiMethod originalMethod, final Collection<? extends PsiReference> originalReferences,
+                                                          Collection<? extends PsiMethod> overridingMethods, Map<PsiMethod, Collection<PsiReference>> methodToReferences,
+                                                          List<? super UsageInfo> usages,
+                                                          final PsiElement[] allElementsToDelete) {
     Set<PsiMethod> validOverriding = new LinkedHashSet<>(overridingMethods);
     Set<PsiMethod> multipleInterfaceImplementations = new HashSet<>();
     boolean anyNewBadRefs;
@@ -891,8 +893,8 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
     return null;
   }
 
-  private static boolean canBePrivate(PsiMethod method, Collection<PsiReference> references, Collection<? extends PsiElement> deleted,
-                               final PsiElement[] allElementsToDelete) {
+  private static boolean canBePrivate(PsiMethod method, Collection<? extends PsiReference> references, Collection<? extends PsiElement> deleted,
+                                      final PsiElement[] allElementsToDelete) {
     final PsiClass containingClass = method.getContainingClass();
     if(containingClass == null) {
       return false;
@@ -920,7 +922,7 @@ public class JavaSafeDeleteProcessor extends SafeDeleteProcessorDelegateBase {
     return true;
   }
 
-  private static Condition<PsiElement> findFieldUsages(final PsiField psiField, final List<UsageInfo> usages, final PsiElement[] allElementsToDelete) {
+  private static Condition<PsiElement> findFieldUsages(final PsiField psiField, final List<? super UsageInfo> usages, final PsiElement[] allElementsToDelete) {
     final Condition<PsiElement> isInsideDeleted = getUsageInsideDeletedFilter(allElementsToDelete);
     Set<PsiParameter> parameters = new LinkedHashSet<>();
     ReferencesSearch.search(psiField).forEach(reference -> {

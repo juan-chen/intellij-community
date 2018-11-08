@@ -1,6 +1,4 @@
-/*
- * Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
- */
+// Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.codeInsight.completion;
 
 import com.intellij.codeInsight.ExpectedTypeInfo;
@@ -100,6 +98,8 @@ public class JavaCompletionContributor extends CompletionContributor {
     psiElement().withText("}").withParent(
       psiElement(PsiCodeBlock.class).afterLeaf(PsiKeyword.TRY)));
   private static final ElementPattern<PsiElement> INSIDE_CONSTRUCTOR = psiElement().inside(psiMethod().constructor(true));
+  private static final ElementPattern<PsiElement> AFTER_ENUM_CONSTANT =
+    psiElement().inside(PsiTypeElement.class).afterLeaf(psiElement().inside(true, psiElement(PsiEnumConstant.class), psiClass()));
 
   @Nullable
   public static ElementFilter getReferenceFilter(PsiElement position) {
@@ -221,7 +221,9 @@ public class JavaCompletionContributor extends CompletionContributor {
       return;
     }
 
-    if (AFTER_NUMBER_LITERAL.accepts(position) || UNEXPECTED_REFERENCE_AFTER_DOT.accepts(position)) {
+    if (AFTER_NUMBER_LITERAL.accepts(position) ||
+        UNEXPECTED_REFERENCE_AFTER_DOT.accepts(position) ||
+        AFTER_ENUM_CONSTANT.accepts(position)) {
       _result.stopHere();
       return;
     }
@@ -314,7 +316,7 @@ public class JavaCompletionContributor extends CompletionContributor {
     return false;
   }
 
-  private static void suggestSmartCast(CompletionParameters parameters, JavaCompletionSession session, boolean quick, Consumer<LookupElement> result) {
+  private static void suggestSmartCast(CompletionParameters parameters, JavaCompletionSession session, boolean quick, Consumer<? super LookupElement> result) {
     if (SmartCastProvider.shouldSuggestCast(parameters)) {
       session.flushBatchItems();
       SmartCastProvider.addCastVariants(parameters, session.getMatcher(), element -> {
@@ -514,7 +516,9 @@ public class JavaCompletionContributor extends CompletionContributor {
     boolean isSecondCompletion = parameters.getInvocationCount() >= 2;
 
     PsiElement position = parameters.getPosition();
-    if (JavaKeywordCompletion.isInstanceofPlace(position) || JavaMemberNameCompletionContributor.INSIDE_TYPE_PARAMS_PATTERN.accepts(position)) {
+    if (JavaKeywordCompletion.isInstanceofPlace(position) ||
+        JavaMemberNameCompletionContributor.INSIDE_TYPE_PARAMS_PATTERN.accepts(position) ||
+        AFTER_ENUM_CONSTANT.accepts(position)) {
       return false;
     }
 
@@ -596,7 +600,7 @@ public class JavaCompletionContributor extends CompletionContributor {
         }
         LookupElementBuilder element = LookupElementBuilder.createWithIcon(method).withInsertHandler(new InsertHandler<LookupElement>() {
           @Override
-          public void handleInsert(InsertionContext context, LookupElement item) {
+          public void handleInsert(@NotNull InsertionContext context, @NotNull LookupElement item) {
             final Editor editor = context.getEditor();
             TailType.EQ.processTail(editor, editor.getCaretModel().getOffset());
             context.setAddCompletionChar(false);
@@ -776,31 +780,32 @@ public class JavaCompletionContributor extends CompletionContributor {
         }
       }
 
-      if (context.getCompletionType() == CompletionType.BASIC) {
-        if (PsiTreeUtil.findElementOfClassAtOffset(file, context.getStartOffset() - 1, PsiReferenceParameterList.class, false) != null) {
-          context.setDummyIdentifier(CompletionInitializationContext.DUMMY_IDENTIFIER_TRIMMED);
-          return;
-        }
-
-        if (semicolonNeeded(context.getEditor(), file, context.getStartOffset())) {
-          context.setDummyIdentifier(CompletionInitializationContext.DUMMY_IDENTIFIER.trim() + ";");
-          return;
-        }
-
-        PsiJavaCodeReferenceElement ref = PsiTreeUtil.findElementOfClassAtOffset(file, context.getStartOffset(), PsiJavaCodeReferenceElement.class, false);
-        if (ref != null && !(ref instanceof PsiReferenceExpression)) {
-          return;
-        }
-
-        final PsiElement element = file.findElementAt(context.getStartOffset());
-
-        if (psiElement().inside(PsiAnnotation.class).accepts(element)) {
-          return;
-        }
-
-        context.setDummyIdentifier(CompletionInitializationContext.DUMMY_IDENTIFIER_TRIMMED);
+      String dummyIdentifier = customizeDummyIdentifier(context, file);
+      if (dummyIdentifier != null) {
+        context.setDummyIdentifier(dummyIdentifier);
       }
     }
+  }
+
+  @Nullable
+  private static String customizeDummyIdentifier(@NotNull CompletionInitializationContext context, PsiFile file) {
+    if (context.getCompletionType() != CompletionType.BASIC) return null;
+
+    int offset = context.getStartOffset();
+    if (PsiTreeUtil.findElementOfClassAtOffset(file, offset - 1, PsiReferenceParameterList.class, false) != null) {
+      return CompletionInitializationContext.DUMMY_IDENTIFIER_TRIMMED;
+    }
+
+    if (semicolonNeeded(context.getEditor(), file, offset)) {
+      return CompletionInitializationContext.DUMMY_IDENTIFIER_TRIMMED + ";";
+    }
+
+    PsiElement leaf = file.findElementAt(offset);
+    if (leaf instanceof PsiIdentifier || leaf instanceof PsiKeyword) {
+      return CompletionInitializationContext.DUMMY_IDENTIFIER_TRIMMED;
+    }
+
+    return null;
   }
 
   public static boolean semicolonNeeded(Editor editor, PsiFile file, int startOffset) {
@@ -945,12 +950,12 @@ public class JavaCompletionContributor extends CompletionContributor {
   }
 
   static class IndentingDecorator extends LookupElementDecorator<LookupElement> {
-    public IndentingDecorator(LookupElement delegate) {
+    IndentingDecorator(LookupElement delegate) {
       super(delegate);
     }
 
     @Override
-    public void handleInsert(InsertionContext context) {
+    public void handleInsert(@NotNull InsertionContext context) {
       super.handleInsert(context);
       Project project = context.getProject();
       Document document = context.getDocument();
@@ -963,7 +968,7 @@ public class JavaCompletionContributor extends CompletionContributor {
   private static class SearchScopeFilter implements ElementFilter {
     private final GlobalSearchScope myScope;
 
-    public SearchScopeFilter(GlobalSearchScope scope) {
+    SearchScopeFilter(GlobalSearchScope scope) {
       myScope = scope;
     }
 

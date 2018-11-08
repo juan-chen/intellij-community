@@ -170,8 +170,8 @@ public class DeprecatedDuplicatesIconPathPatcher extends IconPathPatcher {
     ourDeprecatedIconsReplacements.put("/ide/errorSign.png", "AllIcons.General.Error");
     ourDeprecatedIconsReplacements.put("/ide/errorSign.svg", "AllIcons.General.Error");
 
-    ourDeprecatedIconsReplacements.put("/general/externalTools.png", "AllIcons.General.ExternalToolsSmall");
-    ourDeprecatedIconsReplacements.put("/general/externalTools.svg", "AllIcons.General.ExternalToolsSmall");
+    ourDeprecatedIconsReplacements.put("/general/externalToolsSmall.png", "AllIcons.General.ExternalTools");
+    ourDeprecatedIconsReplacements.put("/general/externalToolsSmall.svg", "AllIcons.General.ExternalTools");
 
     ourDeprecatedIconsReplacements.put("/actions/filter_small.png", "AllIcons.General.Filter");
     ourDeprecatedIconsReplacements.put("/actions/filter_small.svg", "AllIcons.General.Filter");
@@ -248,9 +248,6 @@ public class DeprecatedDuplicatesIconPathPatcher extends IconPathPatcher {
 
     ourDeprecatedIconsReplacements.put("/ide/error.png", "AllIcons.Ide.FatalError");
     ourDeprecatedIconsReplacements.put("/ide/error.svg", "AllIcons.Ide.FatalError");
-
-    ourDeprecatedIconsReplacements.put("/ide/notification/closeHover.png", "AllIcons.Ide.Notification.Close");
-    ourDeprecatedIconsReplacements.put("/ide/notification/closeHover.svg", "AllIcons.Ide.Notification.Close");
 
 
     ourDeprecatedIconsReplacements.put("/general/packagesTab.png", "AllIcons.Nodes.CopyOfFolder");

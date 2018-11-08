@@ -3,9 +3,10 @@
 package com.intellij;
 
 import com.intellij.idea.Bombed;
+import com.intellij.idea.ExcludeFromTestDiscovery;
 import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.testFramework.JITSensitive;
+import com.intellij.testFramework.RunFirst;
 import com.intellij.testFramework.TeamCityLogger;
 import com.intellij.testFramework.TestFrameworkUtil;
 import com.intellij.util.containers.MultiMap;
@@ -18,6 +19,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -35,6 +37,7 @@ public class TestCaseLoader {
   private static final boolean INCLUDE_PERFORMANCE_TESTS = "true".equals(System.getProperty(INCLUDE_PERFORMANCE_TESTS_FLAG));
   private static final boolean INCLUDE_UNCONVENTIONALLY_NAMED_TESTS = "true".equals(System.getProperty(INCLUDE_UNCONVENTIONALLY_NAMED_TESTS_FLAG));
   private static final boolean RUN_ONLY_AFFECTED_TESTS = "true".equals(System.getProperty(RUN_ONLY_AFFECTED_TEST_FLAG));
+  private static final boolean RUN_WITH_TEST_DISCOVERY = System.getProperty("test.discovery.listener") != null;
 
   /**
    * An implicit group which includes all tests from all defined groups and tests which don't belong to any group.
@@ -82,14 +85,8 @@ public class TestCaseLoader {
     MultiMap<String, String> groups = MultiMap.createLinked();
 
     for (URL fileUrl : groupingFileUrls) {
-      try {
-        InputStreamReader reader = new InputStreamReader(fileUrl.openStream());
-        try {
-          groups.putAllValues(GroupBasedTestClassFilter.readGroups(reader));
-        }
-        finally {
-          reader.close();
-        }
+      try (InputStreamReader reader = new InputStreamReader(fileUrl.openStream())) {
+        groups.putAllValues(GroupBasedTestClassFilter.readGroups(reader));
       }
       catch (IOException e) {
         e.printStackTrace();
@@ -178,7 +175,11 @@ public class TestCaseLoader {
     if (!myForceLoadPerformanceTests && !shouldIncludePerformanceTestCase(testCaseClass)) return true;
     String className = testCaseClass.getName();
 
-    return !myTestClassesFilter.matches(className, moduleName) || isBombed(testCaseClass);
+    return !myTestClassesFilter.matches(className, moduleName) || isBombed(testCaseClass) || isExcludeFromTestDiscovery(testCaseClass);
+  }
+
+  private static boolean isExcludeFromTestDiscovery(Class c) {
+    return RUN_WITH_TEST_DISCOVERY && getAnnotationInHierarchy(c, ExcludeFromTestDiscovery.class) != null;
   }
 
   public static boolean isBombed(final AnnotatedElement element) {
@@ -230,9 +231,8 @@ public class TestCaseLoader {
   }
 
   private static int getRank(Class aClass) {
-    if (isPerformanceTestsRun()) {
-      return moveToStart(aClass) ? 0 : 1;
-    }
+    if (runFirst(aClass)) return 0;
+    if (isPerformanceTestsRun()) return 1;
 
     // PlatformLiteFixture is the very special test case because it doesn't load all the XMLs with component/extension declarations
     // (that is, uses a mock application). Instead, it allows to declare them manually using its registerComponent/registerExtension
@@ -252,8 +252,8 @@ public class TestCaseLoader {
     return ourRankList.size();
   }
 
-  private static boolean moveToStart(Class testClass) {
-    return testClass.getAnnotation(JITSensitive.class) != null;
+  private static boolean runFirst(Class testClass) {
+    return getAnnotationInHierarchy(testClass, RunFirst.class) != null;
   }
 
   private static boolean isPlatformLiteFixture(Class aClass) {
@@ -326,5 +326,18 @@ public class TestCaseLoader {
                      + " time to load: " + (after - before) / 1000 + "s.";
     System.out.println(message);
     TeamCityLogger.info(message);
+  }
+
+  @Nullable
+  public static <T extends Annotation> T getAnnotationInHierarchy(@NotNull Class<?> clazz, @NotNull Class<T> annotationClass) {
+    Class<?> current = clazz;
+    while (current != null) {
+      T annotation = current.getAnnotation(annotationClass);
+      if (annotation != null) {
+        return annotation;
+      }
+      current = current.getSuperclass();
+    }
+    return null;
   }
 }

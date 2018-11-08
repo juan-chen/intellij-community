@@ -14,6 +14,7 @@ import com.intellij.execution.runners.ExecutionEnvironment;
 import com.intellij.execution.runners.ExecutionEnvironmentBuilder;
 import com.intellij.execution.util.ExecutionErrorDialog;
 import com.intellij.execution.util.JavaParametersUtil;
+import com.intellij.execution.util.ProgramParametersUtil;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.projectRoots.JavaSdkType;
@@ -93,7 +94,7 @@ public class MavenApplicationConfigurationExecutionEnvironmentProvider implement
       throw new RuntimeException(ExecutionBundle.message("run.configuration.cannot.find.vm.executable"));
     }
 
-    String workingDirectory = applicationConfiguration.getWorkingDirectory();
+    String workingDirectory = ProgramParametersUtil.getWorkingDir(applicationConfiguration, project, module);
 
     List<String> goals = runnerParameters.getGoals();
     if (isNotEmpty(workingDirectory)) {
@@ -146,7 +147,7 @@ public class MavenApplicationConfigurationExecutionEnvironmentProvider implement
     mavenRunConfiguration.setShowConsoleOnStdErr(applicationConfiguration.isShowConsoleOnStdErr());
   }
 
-  private static List<String> patchVmParameters(ParametersList vmParameters) {
+  public static List<String> patchVmParameters(ParametersList vmParameters) {
     List<String> patchedVmParameters = new ArrayList<>(vmParameters.getList());
     for (Iterator<String> iterator = patchedVmParameters.iterator(); iterator.hasNext(); ) {
       String parameter = iterator.next();
@@ -163,7 +164,7 @@ public class MavenApplicationConfigurationExecutionEnvironmentProvider implement
 
     private final ApplicationConfiguration myApplicationConfiguration;
 
-    public MyExecRunConfiguration(Project project, ConfigurationFactory configurationFactory,
+    MyExecRunConfiguration(Project project, ConfigurationFactory configurationFactory,
                                   ApplicationConfiguration applicationConfiguration) {
       super(project, configurationFactory, applicationConfiguration.getName());
       myApplicationConfiguration = applicationConfiguration;

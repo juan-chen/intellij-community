@@ -12,6 +12,7 @@ import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.util.JDOMUtil;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.structuralsearch.MatchVariableConstraint;
 import com.intellij.structuralsearch.SSRBundle;
@@ -22,13 +23,17 @@ import com.intellij.ui.treeStructure.Tree;
 import com.intellij.util.Function;
 import com.intellij.util.SmartList;
 import com.intellij.util.text.DateFormatUtil;
+import com.intellij.util.ui.TextTransferable;
 import com.intellij.util.ui.UIUtil;
 import com.intellij.util.ui.tree.TreeUtil;
+import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.tree.*;
 import java.awt.*;
+import java.awt.datatransfer.Transferable;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
@@ -109,7 +114,7 @@ public class ExistingTemplatesComponent {
         }
       }).setRemoveActionUpdater(new AnActionButtonUpdater() {
         @Override
-        public boolean isEnabled(AnActionEvent e) {
+        public boolean isEnabled(@NotNull AnActionEvent e) {
           final Object selection = patternTree.getLastSelectedPathComponent();
           if (selection instanceof DefaultMutableTreeNode) {
             final DefaultMutableTreeNode node = (DefaultMutableTreeNode)selection;
@@ -188,6 +193,7 @@ public class ExistingTemplatesComponent {
   private void configureSelectTemplateAction(JComponent component) {
     component.addKeyListener(
       new KeyAdapter() {
+        @Override
         public void keyPressed(KeyEvent e) {
           if (e.getKeyCode() == KeyEvent.VK_ENTER) {
             owner.close(DialogWrapper.OK_EXIT_CODE);
@@ -213,7 +219,29 @@ public class ExistingTemplatesComponent {
     tree.setDragEnabled(false);
     tree.setEditable(false);
     tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
+    tree.setTransferHandler(new TransferHandler() {
+      @Nullable
+      @Override
+      protected Transferable createTransferable(JComponent c) {
+        final Object selection = tree.getLastSelectedPathComponent();
+        if (!(selection instanceof DefaultMutableTreeNode)) {
+          return null;
+        }
+        final DefaultMutableTreeNode node = (DefaultMutableTreeNode)selection;
+        if (!(node.getUserObject() instanceof Configuration)) {
+          return null;
+        }
+        final Configuration configuration = (Configuration)node.getUserObject();
+        final Element element = new Element(configuration instanceof SearchConfiguration ? "searchConfiguration" : "replaceConfiguration");
+        configuration.writeExternal(element);
+        return new TextTransferable(JDOMUtil.writeElement(element));
+      }
 
+      @Override
+      public int getSourceActions(JComponent c) {
+        return COPY;
+      }
+    });
 
     final TreeSpeedSearch speedSearch = new TreeSpeedSearch(
       tree,
@@ -245,7 +273,7 @@ public class ExistingTemplatesComponent {
 
     private final ListSpeedSearch mySpeedSearch;
 
-    public ExistingTemplatesListCellRenderer(ListSpeedSearch speedSearch) {
+    ExistingTemplatesListCellRenderer(ListSpeedSearch speedSearch) {
       mySpeedSearch = speedSearch;
     }
 
@@ -286,8 +314,8 @@ public class ExistingTemplatesComponent {
       final Object userObject = treeNode.getUserObject();
       if (userObject == null) return;
 
-      final Color background = selected ? UIUtil.getTreeSelectionBackground(hasFocus) : UIUtil.getTreeTextBackground();
-      final Color foreground = selected && hasFocus ? UIUtil.getTreeSelectionForeground() : UIUtil.getTreeTextForeground();
+      Color background = UIUtil.getTreeBackground(selected, hasFocus);
+      Color foreground = UIUtil.getTreeForeground(selected, hasFocus);
 
       final String text;
       final int style;

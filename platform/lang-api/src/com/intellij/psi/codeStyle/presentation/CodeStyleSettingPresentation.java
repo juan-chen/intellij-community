@@ -29,7 +29,6 @@ import static com.intellij.psi.codeStyle.CodeStyleSettingsCustomizable.*;
 
 /**
  * @author Roman.Shein
- * @since 15.09.2015.
  */
 public class CodeStyleSettingPresentation {
 
@@ -123,7 +122,9 @@ public class CodeStyleSettingPresentation {
                                        ApplicationBundle.message("editbox.keep.blanklines.in.declarations")),
       new CodeStyleSettingPresentation("KEEP_BLANK_LINES_IN_CODE", ApplicationBundle.message("editbox.keep.blanklines.in.code")),
       new CodeStyleSettingPresentation("KEEP_BLANK_LINES_BEFORE_RBRACE",
-                                       ApplicationBundle.message("editbox.keep.blanklines.before.rbrace"))
+                                       ApplicationBundle.message("editbox.keep.blanklines.before.rbrace")),
+      new CodeStyleSettingPresentation("KEEP_BLANK_LINES_BETWEEN_PACKAGE_DECLARATION_AND_HEADER",
+                                       ApplicationBundle.message("editbox.keep.blanklines.between.header.and.package"))
     ));
 
     result.put(new SettingsGroup(BLANK_LINES), ContainerUtil.immutableList(

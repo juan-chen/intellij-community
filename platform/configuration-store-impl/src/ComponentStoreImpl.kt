@@ -1,7 +1,7 @@
 // Copyright 2000-2018 JetBrains s.r.o. Use of this source code is governed by the Apache 2.0 license that can be found in the LICENSE file.
 package com.intellij.configurationStore
 
-import com.intellij.configurationStore.StateStorageManager.ExternalizationSession
+import com.intellij.configurationStore.statistic.eventLog.FeatureUsageSettingsEvents
 import com.intellij.notification.NotificationsManager
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ex.DecodeDefaultsUtil
@@ -31,7 +31,6 @@ import com.intellij.util.containers.SmartHashSet
 import com.intellij.util.containers.isNullOrEmpty
 import com.intellij.util.lang.CompoundRuntimeException
 import com.intellij.util.messages.MessageBus
-import com.intellij.util.xmlb.JDOMXIncluder
 import com.intellij.util.xmlb.XmlSerializerUtil
 import gnu.trove.THashMap
 import org.jdom.Element
@@ -80,7 +79,11 @@ abstract class ComponentStoreImpl : IComponentStore {
   open val loadPolicy: StateLoadPolicy
     get() = StateLoadPolicy.LOAD
 
-  override abstract val storageManager: StateStorageManager
+  abstract override val storageManager: StateStorageManager
+
+  internal fun getComponents(): Map<String, ComponentInfo> {
+    return components
+  }
 
   override fun initComponent(component: Any, isService: Boolean) {
     var componentName = ""
@@ -106,7 +109,8 @@ abstract class ComponentStoreImpl : IComponentStore {
 
   override fun initPersistencePlainComponent(component: Any, key: String) {
     initPersistenceStateComponent(PersistenceStateAdapter(component),
-                                  StateAnnotation(key, FileStorageAnnotation(StoragePathMacros.WORKSPACE_FILE, false)), false)
+                                  StateAnnotation(key, FileStorageAnnotation(StoragePathMacros.WORKSPACE_FILE, false)),
+                                  isService = false)
   }
 
   private fun initPersistenceStateComponent(component: PersistentStateComponent<*>, stateSpec: State, isService: Boolean): String {
@@ -124,14 +128,14 @@ abstract class ComponentStoreImpl : IComponentStore {
     return componentName
   }
 
-  override final fun save(readonlyFiles: MutableList<SaveSessionAndFile>, isForce: Boolean) {
+  final override fun save(readonlyFiles: MutableList<SaveSessionAndFile>, isForce: Boolean) {
     val errors: MutableList<Throwable> = SmartList<Throwable>()
 
     beforeSaveComponents(errors)
 
-    val externalizationSession = if (components.isEmpty()) null else storageManager.startExternalization()
+    val externalizationSession = if (components.isEmpty()) null else SaveSessionProducerManager()
     if (externalizationSession != null) {
-      doSaveComponents(isForce, externalizationSession, errors)
+      saveComponents(isForce, externalizationSession, errors)
     }
 
     afterSaveComponents(errors)
@@ -144,8 +148,9 @@ abstract class ComponentStoreImpl : IComponentStore {
     }
 
     if (externalizationSession != null) {
-      doSave(externalizationSession.createSaveSessions(), readonlyFiles, errors)
+      doSave(externalizationSession, readonlyFiles, errors)
     }
+
     CompoundRuntimeException.throwIfNotEmpty(errors)
   }
 
@@ -158,19 +163,17 @@ abstract class ComponentStoreImpl : IComponentStore {
   protected open fun afterSaveComponents(errors: MutableList<Throwable>) {
   }
 
-  protected  open fun doSaveComponents(isForce: Boolean, externalizationSession: ExternalizationSession, errors: MutableList<Throwable>): MutableList<Throwable>? {
+  private fun saveComponents(isForce: Boolean, session: SaveSessionProducerManager, errors: MutableList<Throwable>): MutableList<Throwable>? {
     val isUseModificationCount = Registry.`is`("store.save.use.modificationCount", true)
 
     val names = ArrayUtilRt.toStringArray(components.keys)
     Arrays.sort(names)
-    val timeLogPrefix = "Saving"
-    val timeLog = if (LOG.isDebugEnabled) StringBuilder(timeLogPrefix) else null
+    var timeLog: StringBuilder? = null
 
     // well, strictly speaking each component saving takes some time, but +/- several seconds doesn't matter
     val nowInSeconds: Int = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis()).toInt()
     for (name in names) {
-      val start = if (timeLog == null) 0 else System.currentTimeMillis()
-
+      val start = System.currentTimeMillis()
       try {
         val info = components.get(name)!!
         var currentModificationCount = -1L
@@ -195,73 +198,92 @@ abstract class ComponentStoreImpl : IComponentStore {
           }
         }
 
-        commitComponent(externalizationSession, info, name)
+        commitComponent(session, info, name)
         info.updateModificationCount(currentModificationCount)
       }
       catch (e: Throwable) {
         errors.add(Exception("Cannot get $name component state", e))
       }
 
-      timeLog?.let {
-        val duration = System.currentTimeMillis() - start
-        if (duration > 10) {
-          it.append("\n").append(name).append(" took ").append(duration).append(" ms: ").append((duration / 60000)).append(" min ").append(
-            ((duration % 60000) / 1000)).append("sec")
+      val duration = System.currentTimeMillis() - start
+      if (duration > 10) {
+        if (timeLog == null) {
+          timeLog = StringBuilder("Saving " + toString())
         }
+        else {
+          timeLog.append(", ")
+        }
+        timeLog.append(name).append(" took ").append(duration).append(" ms")
       }
     }
 
-    if (timeLog != null && timeLog.length > timeLogPrefix.length) {
-      LOG.debug(timeLog.toString())
+    if (timeLog != null) {
+      LOG.info(timeLog.toString())
     }
     return errors
   }
 
   @TestOnly
   override fun saveApplicationComponent(component: PersistentStateComponent<*>) {
-    val externalizationSession = storageManager.startExternalization() ?: return
-
     val stateSpec = StoreUtil.getStateSpec(component)
+    LOG.info("saveApplicationComponent is called for ${stateSpec.name}")
+    val externalizationSession = SaveSessionProducerManager()
     commitComponent(externalizationSession, ComponentInfoImpl(component, stateSpec), null)
-    val sessions = externalizationSession.createSaveSessions()
-    if (sessions.isEmpty()) {
-      return
-    }
-
     val absolutePath = Paths.get(storageManager.expandMacros(findNonDeprecated(stateSpec.storages).path)).toAbsolutePath().toString()
     runUndoTransparentWriteAction {
+      val errors: MutableList<Throwable> = SmartList<Throwable>()
       try {
         VfsRootAccess.allowRootAccess(absolutePath)
-        val errors: MutableList<Throwable> = SmartList<Throwable>()
-        doSave(sessions, errors = errors)
-        CompoundRuntimeException.throwIfNotEmpty(errors)
+        val isSomethingChanged = externalizationSession.save(errors = errors)
+        if (!isSomethingChanged) {
+          LOG.info("saveApplicationComponent is called for ${stateSpec.name} but nothing to save")
+        }
       }
       finally {
         VfsRootAccess.disallowRootAccess(absolutePath)
       }
+      CompoundRuntimeException.throwIfNotEmpty(errors)
     }
   }
 
-  private fun commitComponent(session: ExternalizationSession, info: ComponentInfo, componentName: String?) {
+  private fun commitComponent(session: SaveSessionProducerManager, info: ComponentInfo, componentName: String?) {
     val component = info.component
     @Suppress("DEPRECATION")
-    if (component is PersistentStateComponent<*>) {
-      component.state?.let {
-        val stateSpec = info.stateSpec!!
-        session.setState(getStorageSpecs(component, stateSpec, StateStorageOperation.WRITE), component, componentName ?: stateSpec.name, it)
+    if (component is JDOMExternalizable) {
+      val effectiveComponentName = componentName ?: ComponentManagerImpl.getComponentName(component)
+      storageManager.getOldStorage(component, effectiveComponentName, StateStorageOperation.WRITE)?.let {
+        session.getProducer(it)?.setState(component, effectiveComponentName, component)
       }
+      return
     }
-    else if (component is JDOMExternalizable) {
-      session.setStateInOldStorage(component, componentName ?: ComponentManagerImpl.getComponentName(component), component)
+
+    val state = (component as PersistentStateComponent<*>).state ?: return
+    val stateSpec = info.stateSpec!!
+    val effectiveComponentName = componentName ?: stateSpec.name
+    val stateStorageChooser = component as? StateStorageChooserEx
+    val storageSpecs = getStorageSpecs(component, stateSpec, StateStorageOperation.WRITE)
+    for (storageSpec in storageSpecs) {
+      @Suppress("IfThenToElvis")
+      var resolution = if (stateStorageChooser == null) Resolution.DO else stateStorageChooser.getResolution(storageSpec, StateStorageOperation.WRITE)
+      if (resolution == Resolution.SKIP) {
+        continue
+      }
+
+      val storage = storageManager.getStateStorage(storageSpec)
+
+      if (resolution == Resolution.DO) {
+        resolution = storage.getResolution(component, StateStorageOperation.WRITE)
+        if (resolution == Resolution.SKIP) {
+          continue
+        }
+      }
+
+      session.getProducer(storage)?.setState(component, effectiveComponentName, if (storageSpec.deprecated || resolution == Resolution.CLEAR) null else state)
     }
   }
 
-  protected open fun doSave(saveSessions: List<SaveSession>,
-                            readonlyFiles: MutableList<SaveSessionAndFile> = arrayListOf(),
-                            errors: MutableList<Throwable>) {
-    for (session in saveSessions) {
-      executeSave(session, readonlyFiles, errors)
-    }
+  protected open fun doSave(saveSession: SaveExecutor, readonlyFiles: MutableList<SaveSessionAndFile> = arrayListOf(), errors: MutableList<Throwable>) {
+    saveSession.save(readonlyFiles, errors)
     return
   }
 
@@ -348,6 +370,7 @@ abstract class ComponentStoreImpl : IComponentStore {
             state = deserializeState(Element("state"), stateClass, null)!!
           }
           else {
+            FeatureUsageSettingsEvents.logDefaultConfigurationState(name, stateSpec, stateClass, project)
             continue
           }
         }
@@ -356,7 +379,10 @@ abstract class ComponentStoreImpl : IComponentStore {
           component.loadState(state)
         }
         finally {
-          stateGetter.close()
+          val stateAfterLoad = stateGetter.close()
+          (stateAfterLoad ?: state).let {
+            FeatureUsageSettingsEvents.logConfigurationState(name, stateSpec, it, project)
+          }
         }
         return true
       }
@@ -392,9 +418,9 @@ abstract class ComponentStoreImpl : IComponentStore {
   private fun <T : Any> getDefaultState(component: Any, componentName: String, stateClass: Class<T>): T? {
     val url = DecodeDefaultsUtil.getDefaults(component, componentName) ?: return null
     try {
-      val documentElement = JDOMXIncluder.resolve(JDOMUtil.loadDocument(url), url.toExternalForm()).detachRootElement()
-      getPathMacroManagerForDefaults()?.expandPaths(documentElement)
-      return deserializeState(documentElement, stateClass, null)
+      val element = JDOMUtil.load(url)
+      getPathMacroManagerForDefaults()?.expandPaths(element)
+      return deserializeState(element, stateClass, null)
     }
     catch (e: Throwable) {
       throw IOException("Error loading default state from $url", e)
@@ -439,13 +465,13 @@ abstract class ComponentStoreImpl : IComponentStore {
     return notReloadableComponents ?: emptySet()
   }
 
-  override final fun reloadStates(componentNames: Set<String>, messageBus: MessageBus) {
+  final override fun reloadStates(componentNames: Set<String>, messageBus: MessageBus) {
     runBatchUpdate(messageBus) {
       reinitComponents(componentNames)
     }
   }
 
-  override final fun reloadState(componentClass: Class<out PersistentStateComponent<*>>) {
+  final override fun reloadState(componentClass: Class<out PersistentStateComponent<*>>) {
     val stateSpec = StoreUtil.getStateSpecOrError(componentClass)
     val info = components.get(stateSpec.name) ?: return
     (info.component as? PersistentStateComponent<*>)?.let {
@@ -513,6 +539,8 @@ abstract class ComponentStoreImpl : IComponentStore {
   fun removeComponent(name: String) {
     components.remove(name)
   }
+
+  override fun toString() = storageManager.componentManager.toString()
 }
 
 internal fun executeSave(session: SaveSession, readonlyFiles: MutableList<SaveSessionAndFile>, errors: MutableList<Throwable>) {
@@ -551,7 +579,7 @@ internal fun Array<out Storage>.sortByDeprecated(): List<Storage> {
 }
 
 private fun notifyUnknownMacros(store: IComponentStore, project: Project, componentName: String) {
-  val substitutor = store.storageManager.macroSubstitutor ?: return
+  val substitutor = store.storageManager.macroSubstitutor as? TrackingPathMacroSubstitutor ?: return
 
   val immutableMacros = substitutor.getUnknownMacros(componentName)
   if (immutableMacros.isEmpty()) {
@@ -579,4 +607,38 @@ private fun notifyUnknownMacros(store: IComponentStore, project: Project, compon
     LOG.debug("Reporting unknown path macros $macros in component $componentName")
     doNotify(macros, project, Collections.singletonMap(substitutor, store))
   }, project.disposed)
+}
+
+interface SaveExecutor {
+  /**
+   * @return was something really saved
+   */
+  fun save(readonlyFiles: MutableList<SaveSessionAndFile> = SmartList(), errors: MutableList<Throwable>): Boolean
+}
+
+private class SaveSessionProducerManager : SaveExecutor {
+  private val sessions = LinkedHashMap<StateStorage, StateStorage.SaveSessionProducer>()
+
+  fun getProducer(storage: StateStorage): StateStorage.SaveSessionProducer? {
+    var session = sessions.get(storage)
+    if (session == null) {
+      session = storage.createSaveSessionProducer() ?: return null
+      sessions.put(storage, session)
+    }
+    return session
+  }
+
+  override fun save(readonlyFiles: MutableList<SaveSessionAndFile>, errors: MutableList<Throwable>): Boolean {
+    if (sessions.isEmpty()) {
+      return false
+    }
+
+    var changed = false
+    for (session in sessions.values) {
+      val saveSession = session.createSaveSession() ?: continue
+      executeSave(saveSession, readonlyFiles, errors)
+      changed = true
+    }
+    return changed
+  }
 }

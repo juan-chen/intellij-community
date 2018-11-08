@@ -989,8 +989,8 @@ public void test() {
   }
 
   fun testContinuationDescriptionFormatting() {
-    currentCodeStyleSettings.setRightMargin(JavaLanguage.INSTANCE, 40)
-    currentCodeStyleSettings.getIndentOptions(JavaFileType.INSTANCE).CONTINUATION_INDENT_SIZE = 2
+    getCurrentCodeStyleSettings().setRightMargin(JavaLanguage.INSTANCE, 40)
+    getCurrentCodeStyleSettings().getIndentOptions(JavaFileType.INSTANCE).CONTINUATION_INDENT_SIZE = 2
     getJavaSettings().JD_INDENT_ON_CONTINUATION = true
     getJavaSettings().JD_ALIGN_PARAM_COMMENTS = false
     getJavaSettings().JD_ALIGN_EXCEPTION_COMMENTS = false
@@ -1043,7 +1043,6 @@ String test(int aParameter, int bParameter) {
       "\t}",
 
       "/**\n" +
-      " *\n" +
       " *\n" +
       " */\n" +
       "void check() {\n" +
@@ -1282,6 +1281,38 @@ public class Test {
     }
 
     private void test2(Object a, Object b, Object c, Object d, Object e) {
+    }
+}
+"""
+    )
+  }
+
+  fun testIdea180882() {
+    codeStyleBean.apply {
+      isJavaDocKeepEmptyParameter = false;
+    }
+    doTextTest(
+"""
+public class Test {
+
+    /**
+     * @param a
+     * @param b
+     */
+    public void foo(boolean a, boolean b) {
+
+    }
+}
+""",
+
+"""
+public class Test {
+
+    /**
+     *
+     */
+    public void foo(boolean a, boolean b) {
+
     }
 }
 """

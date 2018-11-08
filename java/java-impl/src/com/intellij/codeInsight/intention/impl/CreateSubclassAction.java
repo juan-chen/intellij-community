@@ -253,7 +253,7 @@ public class CreateSubclassAction extends BaseIntentionAction {
                                     final PsiClass psiClass,
                                     final PsiClass targetClass,
                                     final boolean includeClassName) {
-    final PsiElementFactory elementFactory = JavaPsiFacade.getInstance(project).getElementFactory();
+    final PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
     PsiJavaCodeReferenceElement ref = elementFactory.createClassReferenceElement(psiClass);
     try {
       if (psiClass.isInterface()) {
@@ -296,7 +296,7 @@ public class CreateSubclassAction extends BaseIntentionAction {
           editor.getDocument().deleteString(textRange.getStartOffset(), textRange.getEndOffset());
           CreateFromUsageBaseFix.startTemplate(editor, template, project, new TemplateEditingAdapter() {
             @Override
-            public void templateFinished(Template template, boolean brokenOff) {
+            public void templateFinished(@NotNull Template template, boolean brokenOff) {
               try {
                 LOG.assertTrue(startClassOffset.isValid(), startClassOffset);
                 final PsiClass aTargetClass;

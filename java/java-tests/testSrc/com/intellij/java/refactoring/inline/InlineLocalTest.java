@@ -270,6 +270,10 @@ public class InlineLocalTest extends LightCodeInsightTestCase {
     doTest(false);
   }
 
+  public void testDisableShortCircuit() {
+    doTest(false);
+  }
+
   public void testOperationPrecedenceWhenInlineToStringConcatenation() {
     doTest(false);
   }
@@ -293,6 +297,7 @@ public class InlineLocalTest extends LightCodeInsightTestCase {
 
   public void testLocalInsideLambdaWithNestedLambda() { doTest(true); }
   public void testDefInMultiAssignmentStatement() { doTest(true); }
+  public void testPrivateOverload() { doTest(true); }
 
   private void doTest(final boolean inlineDef, String conflictMessage) {
     try {

@@ -16,6 +16,7 @@
 package com.intellij.refactoring.util;
 
 import com.intellij.codeInsight.ChangeContextUtil;
+import com.intellij.codeInspection.redundantCast.RemoveRedundantCastUtil;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.util.Comparing;
@@ -27,6 +28,7 @@ import com.intellij.psi.search.LocalSearchScope;
 import com.intellij.psi.search.searches.ReferencesSearch;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.psi.util.PsiUtil;
 import com.intellij.psi.util.RedundantCastUtil;
 import com.intellij.refactoring.RefactoringBundle;
 import com.intellij.util.IncorrectOperationException;
@@ -88,7 +90,7 @@ public class InlineUtil {
     expr = (PsiExpression)ChangeContextUtil.decodeContextInfo(expr, thisClass, thisAccessExpr);
     PsiType exprType = RefactoringUtil.getTypeByExpression(expr);
     if (exprType != null && !exprType.equals(varType)) {
-      PsiElementFactory elementFactory = JavaPsiFacade.getInstance(manager.getProject()).getElementFactory();
+      PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(manager.getProject());
       PsiMethod method = qualifyWithExplicitTypeArguments(initializer, expr, varType);
       if (method != null) {
         if (expr instanceof PsiMethodCallExpression) {
@@ -129,7 +131,7 @@ public class InlineUtil {
   private static PsiMethod qualifyWithExplicitTypeArguments(PsiExpression initializer,
                                                             PsiExpression expr,
                                                             PsiType varType) {
-    final PsiElementFactory elementFactory = JavaPsiFacade.getInstance(initializer.getProject()).getElementFactory();
+    final PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(initializer.getProject());
     if (expr instanceof PsiCallExpression && ((PsiCallExpression)expr).getTypeArguments().length == 0) {
       final JavaResolveResult resolveResult = ((PsiCallExpression)initializer).resolveMethodGenerics();
       final PsiElement resolved = resolveResult.getElement();
@@ -170,7 +172,7 @@ public class InlineUtil {
     operand.replace(expr);
     expr = (PsiTypeCastExpression)expr.replace(cast);
     if (RedundantCastUtil.isCastRedundant((PsiTypeCastExpression)expr)) {
-      return RedundantCastUtil.removeCast((PsiTypeCastExpression)expr);
+      return RemoveRedundantCastUtil.removeCast((PsiTypeCastExpression)expr);
     }
 
     return expr;
@@ -208,7 +210,7 @@ public class InlineUtil {
   }
 
   public static void inlineArrayCreationForVarargs(final PsiNewExpression arrayCreation) {
-    PsiExpressionList argumentList = (PsiExpressionList)arrayCreation.getParent();
+    PsiExpressionList argumentList = (PsiExpressionList)PsiUtil.skipParenthesizedExprUp(arrayCreation.getParent());
     if (argumentList == null) return;
     PsiExpression[] args = argumentList.getExpressions();
     PsiArrayInitializerExpression arrayInitializer = arrayCreation.getArrayInitializer();
@@ -437,6 +439,28 @@ public class InlineUtil {
     for (PsiElement child : children) {
       solveVariableNameConflicts(child, placeToInsert, renameScope);
     }
+  }
+
+  public static boolean isChainingConstructor(PsiMethod constructor) {
+    return getChainedConstructor(constructor) != null;
+  }
+
+  public static PsiMethod getChainedConstructor(PsiMethod constructor) {
+    PsiCodeBlock body = constructor.getBody();
+    if (body != null) {
+      PsiStatement[] statements = body.getStatements();
+      if (statements.length == 1 && statements[0] instanceof PsiExpressionStatement) {
+        PsiExpression expression = ((PsiExpressionStatement)statements[0]).getExpression();
+        if (expression instanceof PsiMethodCallExpression) {
+          PsiReferenceExpression methodExpr = ((PsiMethodCallExpression)expression).getMethodExpression();
+            if ("this".equals(methodExpr.getReferenceName())) {
+              PsiElement resolved = methodExpr.resolve();
+              return resolved instanceof PsiMethod && ((PsiMethod)resolved).isConstructor() ? (PsiMethod)resolved : null; //delegated via "this" call
+            }
+        }
+      }
+    }
+    return null;
   }
 
   public enum TailCallType {

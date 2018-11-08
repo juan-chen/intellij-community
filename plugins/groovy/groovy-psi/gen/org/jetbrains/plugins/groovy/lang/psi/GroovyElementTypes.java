@@ -56,10 +56,12 @@ public interface GroovyElementTypes {
   GroovyElementType ARGUMENT_LABEL = new GroovyElementType("ARGUMENT_LABEL");
   GroovyElementType ARGUMENT_LIST = new GroovyElementType("ARGUMENT_LIST");
   GroovyElementType ARRAY_DECLARATION = new GroovyElementType("ARRAY_DECLARATION");
+  GroovyElementType ARRAY_INITIALIZER = new GroovyElementType("ARRAY_INITIALIZER");
   GroovyElementType ARRAY_TYPE_ELEMENT = new GroovyElementType("ARRAY_TYPE_ELEMENT");
   GroovyElementType ASSERT_STATEMENT = new GroovyElementType("ASSERT_STATEMENT");
   GroovyElementType ASSIGNMENT_EXPRESSION = new GroovyElementType("ASSIGNMENT_EXPRESSION");
   GroovyElementType AS_EXPRESSION = new GroovyElementType("AS_EXPRESSION");
+  GroovyElementType ATTRIBUTE_EXPRESSION = new GroovyElementType("ATTRIBUTE_EXPRESSION");
   GroovyElementType BAND_EXPRESSION = new GroovyElementType("BAND_EXPRESSION");
   GroovyElementType BLOCK_STATEMENT = new GroovyElementType("BLOCK_STATEMENT");
   GroovyElementType BOR_EXPRESSION = new GroovyElementType("BOR_EXPRESSION");
@@ -90,6 +92,7 @@ public interface GroovyElementTypes {
   GrEnumDefinitionElementType ENUM_TYPE_DEFINITION = new GrEnumDefinitionElementType("ENUM_TYPE_DEFINITION");
   GroovyElementType EQUALITY_EXPRESSION = new GroovyElementType("EQUALITY_EXPRESSION");
   GroovyElementType EXPRESSION = new GroovyElementType("EXPRESSION");
+  GroovyElementType EXPRESSION_LIST = new GroovyElementType("EXPRESSION_LIST");
   GrExtendsClauseElementType EXTENDS_CLAUSE = new GrExtendsClauseElementType("EXTENDS_CLAUSE");
   GrFieldElementType FIELD = new GrFieldElementType("FIELD");
   GroovyElementType FINALLY_CLAUSE = new GroovyElementType("FINALLY_CLAUSE");
@@ -237,8 +240,10 @@ public interface GroovyElementTypes {
   IElementType SLASHY_CONTENT = new GroovyElementType("regex content");
   IElementType SLASHY_END = new GroovyElementType("regex end");
   IElementType SL_COMMENT = new GroovyElementType("line comment");
-  IElementType STR_DQ = new GroovyElementType("Gstring");
-  IElementType STR_SQ = new GroovyElementType("string");
+  IElementType STRING_DQ = new GroovyElementType("double quoted string");
+  IElementType STRING_SQ = new GroovyElementType("single quoted string");
+  IElementType STRING_TDQ = new GroovyElementType("triple double quoted string");
+  IElementType STRING_TSQ = new GroovyElementType("triple single quoted string");
   IElementType T_ARROW = new GroovyElementType("->");
   IElementType T_ASSIGN = new GroovyElementType("=");
   IElementType T_AT = new GroovyElementType("@");

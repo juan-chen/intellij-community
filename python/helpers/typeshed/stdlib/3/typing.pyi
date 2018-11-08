@@ -47,8 +47,7 @@ Set = TypeAlias(object)
 FrozenSet = TypeAlias(object)
 Counter = TypeAlias(object)
 Deque = TypeAlias(object)
-if sys.version_info >= (3, 3):
-    ChainMap = TypeAlias(object)
+ChainMap = TypeAlias(object)
 
 # Predefined type variables.
 AnyStr = TypeVar('AnyStr', str, bytes)
@@ -178,8 +177,7 @@ class Coroutine(Awaitable[_V_co], Generic[_T_co, _T_contra, _V_co]):
 # NOTE: This type does not exist in typing.py or PEP 484.
 # The parameters corrrespond to Generator, but the 4th is the original type.
 class AwaitableGenerator(Awaitable[_V_co], Generator[_T_co, _T_contra, _V_co],
-                         Generic[_T_co, _T_contra, _V_co, _S], metaclass=ABCMeta):
-    pass
+                         Generic[_T_co, _T_contra, _V_co, _S], metaclass=ABCMeta): ...
 
 @runtime
 class AsyncIterable(Protocol[_T_co]):
@@ -254,6 +252,12 @@ class Sequence(_Collection[_T_co], Reversible[_T_co], Generic[_T_co]):
 class MutableSequence(Sequence[_T], Generic[_T]):
     @abstractmethod
     def insert(self, index: int, object: _T) -> None: ...
+    @overload
+    @abstractmethod
+    def __getitem__(self, i: int) -> _T: ...
+    @overload
+    @abstractmethod
+    def __getitem__(self, s: slice) -> MutableSequence[_T]: ...
     @overload
     @abstractmethod
     def __setitem__(self, i: int, o: _T) -> None: ...
@@ -476,7 +480,7 @@ class Match(Generic[AnyStr]):
 
     # The regular expression object whose match() or search() method produced
     # this match instance.
-    re = ...  # type: 'Pattern[AnyStr]'
+    re = ...  # type: Pattern[AnyStr]
 
     def expand(self, template: AnyStr) -> AnyStr: ...
 
@@ -537,13 +541,17 @@ class Pattern(Generic[AnyStr]):
 def get_type_hints(obj: Callable, globalns: Optional[dict[str, Any]] = ...,
                    localns: Optional[dict[str, Any]] = ...) -> dict[str, Any]: ...
 
+@overload
 def cast(tp: Type[_T], obj: Any) -> _T: ...
+@overload
+def cast(tp: str, obj: Any) -> Any: ...
 
 # Type constructors
 
 # NamedTuple is special-cased in the type checker
 class NamedTuple(tuple):
     _field_types = ...  # type: collections.OrderedDict[str, Type[Any]]
+    _field_defaults: Dict[str, Any] = ...
     _fields = ...  # type: Tuple[str, ...]
     _source = ...  # type: str
 
@@ -553,10 +561,7 @@ class NamedTuple(tuple):
     @classmethod
     def _make(cls: Type[_T], iterable: Iterable[Any]) -> _T: ...
 
-    if sys.version_info >= (3, 1):
-        def _asdict(self) -> collections.OrderedDict[str, Any]: ...
-    else:
-        def _asdict(self) -> Dict[str, Any]: ...
+    def _asdict(self) -> collections.OrderedDict[str, Any]: ...
     def _replace(self: _T, **kwargs: Any) -> _T: ...
 
 def NewType(name: str, tp: Type[_T]) -> Type[_T]: ...

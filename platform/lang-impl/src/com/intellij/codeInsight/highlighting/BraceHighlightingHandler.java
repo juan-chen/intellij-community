@@ -20,7 +20,6 @@ import com.intellij.openapi.editor.colors.EditorColorsManager;
 import com.intellij.openapi.editor.colors.EditorColorsScheme;
 import com.intellij.openapi.editor.ex.DocumentEx;
 import com.intellij.openapi.editor.ex.EditorEx;
-import com.intellij.openapi.editor.ex.MarkupModelEx;
 import com.intellij.openapi.editor.ex.util.HighlighterIteratorWrapper;
 import com.intellij.openapi.editor.ex.util.LexerEditorHighlighter;
 import com.intellij.openapi.editor.highlighter.EditorHighlighter;
@@ -47,44 +46,35 @@ import com.intellij.ui.ColorUtil;
 import com.intellij.ui.LightweightHint;
 import com.intellij.util.Alarm;
 import com.intellij.util.Processor;
-import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.text.CharArrayUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.awt.*;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Set;
 
 public class BraceHighlightingHandler {
   private static final Key<List<RangeHighlighter>> BRACE_HIGHLIGHTERS_IN_EDITOR_VIEW_KEY = Key.create("BraceHighlighter.BRACE_HIGHLIGHTERS_IN_EDITOR_VIEW_KEY");
   private static final Key<RangeHighlighter> LINE_MARKER_IN_EDITOR_KEY = Key.create("BraceHighlighter.LINE_MARKER_IN_EDITOR_KEY");
   private static final Key<LightweightHint> HINT_IN_EDITOR_KEY = Key.create("BraceHighlighter.HINT_IN_EDITOR_KEY");
-
-  /**
-   * Holds weak references to the editors that are being processed at non-EDT.
-   * <p/>
-   * Is intended to be used to avoid submitting unnecessary new processing request from EDT, i.e. it's assumed that the collection
-   * Must be accessed from the EDT only.
-   */
-  private static final Set<Editor> PROCESSED_EDITORS = Collections.newSetFromMap(ContainerUtil.createWeakMap());
+  private static final Key<Boolean> PROCESSED = Key.create("BraceHighlighter.PROCESSED");
+  static final int LAYER = HighlighterLayer.LAST + 1;
 
   @NotNull private final Project myProject;
-  @NotNull private final Editor myEditor;
+  @NotNull private final EditorEx myEditor;
   private final Alarm myAlarm;
 
   private final DocumentEx myDocument;
   private final PsiFile myPsiFile;
   private final CodeInsightSettings myCodeInsightSettings;
 
-  private BraceHighlightingHandler(@NotNull Project project, @NotNull Editor editor, @NotNull Alarm alarm, PsiFile psiFile) {
+  BraceHighlightingHandler(@NotNull Project project, @NotNull EditorEx editor, @NotNull Alarm alarm, PsiFile psiFile) {
     myProject = project;
 
     myEditor = editor;
     myAlarm = alarm;
-    myDocument = (DocumentEx)myEditor.getDocument();
+    myDocument = myEditor.getDocument();
 
     myPsiFile = psiFile;
     myCodeInsightSettings = CodeInsightSettings.getInstance();
@@ -92,72 +82,76 @@ public class BraceHighlightingHandler {
 
   static void lookForInjectedAndMatchBracesInOtherThread(@NotNull final Editor editor,
                                                          @NotNull final Alarm alarm,
-                                                         @NotNull final Processor<BraceHighlightingHandler> processor) {
+                                                         @NotNull final Processor<? super BraceHighlightingHandler> processor) {
     ApplicationManagerEx.getApplicationEx().assertIsDispatchThread();
     if (!isValidEditor(editor)) return;
-    if (!PROCESSED_EDITORS.add(editor)) {
-      // Skip processing if that is not really necessary.
-      // Assuming to be in EDT here.
-      return;
-    }
-    final int offset = editor.getCaretModel().getOffset();
-
+    if (editor.getUserData(PROCESSED) != null) return;
+    editor.putUserData(PROCESSED, Boolean.TRUE);
     // any request to the UI component need to be done from EDT
     final ModalityState modalityState = ModalityState.stateForComponent(editor.getComponent());
-    final DumbAwareRunnable removeEditorFromProcessed = () -> PROCESSED_EDITORS.remove(editor);
+
+    final int offset = editor.getCaretModel().getOffset();
 
     ApplicationManager.getApplication().executeOnPooledThread(() -> {
-      if (!ApplicationManagerEx.getApplicationEx().tryRunReadAction(() ->
-        {
+      boolean success = ApplicationManagerEx.getApplicationEx().tryRunReadAction(() -> {
         try {
-        ((ApplicationImpl)ApplicationManager.getApplication()).executeByImpatientReader(()->{
-        if (!ProgressIndicatorUtils.runInReadActionWithWriteActionPriority(()->{
-          if (!isValidEditor(editor)) {
-            removeFromProcessedLater(editor);
-            return;
-          }
-          @SuppressWarnings("ConstantConditions") // the `project` is valid after the `isValidEditor` call
-          @NotNull final Project project = editor.getProject();
-
-          final PsiFile psiFile = PsiUtilBase.getPsiFileInEditor(editor, project);
-          PsiFile injected = psiFile instanceof PsiBinaryFile || !isValidFile(psiFile)
-                             ? null
-                             : getInjectedFileIfAny(editor, project, offset, psiFile, alarm);
-          ApplicationManager.getApplication().invokeLater((DumbAwareRunnable)() -> {
-            try {
-              if (isValidEditor(editor) && isValidFile(injected)) {
-                Editor newEditor = InjectedLanguageUtil.getInjectedEditorForInjectedFile(editor, injected);
-                BraceHighlightingHandler handler = new BraceHighlightingHandler(project, newEditor, alarm, injected);
-                processor.process(handler);
+          ((ApplicationImpl)ApplicationManager.getApplication()).executeByImpatientReader(() -> {
+            if (!ProgressIndicatorUtils.runInReadActionWithWriteActionPriority(() -> {
+              if (!isValidEditor(editor)) {
+                removeFromProcessedLater(editor);
+                return;
               }
+              @SuppressWarnings("ConstantConditions") // the `project` is valid after the `isValidEditor` call
+              @NotNull final Project project = editor.getProject();
+
+              final PsiFile psiFile = PsiUtilBase.getPsiFileInEditor(editor, project);
+              PsiFile injected = psiFile instanceof PsiBinaryFile || !isValidFile(psiFile)
+                                 ? null
+                                 : getInjectedFileIfAny(editor, project, offset, psiFile, alarm);
+              ApplicationManager.getApplication().invokeLater((DumbAwareRunnable)() -> {
+                try {
+                  if (isValidEditor(editor) && isValidFile(injected)) {
+                    EditorEx newEditor = (EditorEx)InjectedLanguageUtil.getInjectedEditorForInjectedFile(editor, injected);
+                    BraceHighlightingHandler handler = new BraceHighlightingHandler(project, newEditor, alarm, injected);
+                    processor.process(handler);
+                  }
+                }
+                finally {
+                  editor.putUserData(PROCESSED, null);
+                }
+              }, modalityState);
+            })) {
+              removeFromProcessedLater(editor);
             }
-            finally {
-              removeEditorFromProcessed.run();
             }
-          }, modalityState);
-        })) {
+          );
+        }
+        catch (Exception e) {
+          // Reset processing flag in case of unexpected exception.
           removeFromProcessedLater(editor);
-          }}
+          throw e;
+        }
+        }
       );
-      }
-      catch(Exception e) {
-        // Reset processing flag in case of unexpected exception.
-        removeFromProcessedLater(editor);
-        throw e;
-      }
-     }
-          )) {
+      if (!success) {
         // write action is queued in AWT. restart after it's finished
-        ApplicationManager.getApplication().invokeLater(() -> {
-          removeEditorFromProcessed.run();
-          lookForInjectedAndMatchBracesInOtherThread(editor, alarm, processor);
-        }, modalityState);
+        restartLater(editor, modalityState, alarm, processor);
       }
     });
   }
 
+  private static void restartLater(@NotNull Editor editor,
+                                   @NotNull ModalityState modalityState,
+                                   @NotNull Alarm alarm,
+                                   @NotNull Processor<? super BraceHighlightingHandler> processor) {
+    ApplicationManager.getApplication().invokeLater(() -> {
+      editor.putUserData(PROCESSED, null);
+      lookForInjectedAndMatchBracesInOtherThread(editor, alarm, processor);
+    }, modalityState);
+  }
+
   private static void removeFromProcessedLater(@NotNull Editor editor) {
-    ApplicationManager.getApplication().invokeLater(() -> PROCESSED_EDITORS.remove(editor));
+    ApplicationManager.getApplication().invokeLater(() -> editor.putUserData(PROCESSED, null));
   }
 
   private static boolean isValidFile(PsiFile file) {
@@ -236,9 +230,9 @@ public class BraceHighlightingHandler {
   void updateBraces() {
     ApplicationManager.getApplication().assertIsDispatchThread();
 
-    if (myPsiFile == null || !myPsiFile.isValid()) return;
-
     clearBraceHighlighters();
+
+    if (myPsiFile == null || !myPsiFile.isValid()) return;
 
     if (!myCodeInsightSettings.HIGHLIGHT_BRACES) return;
 
@@ -249,13 +243,6 @@ public class BraceHighlightingHandler {
     int offset = myEditor.getCaretModel().getOffset();
     final CharSequence chars = myEditor.getDocument().getCharsSequence();
 
-    //if (myEditor.offsetToLogicalPosition(offset).column != myEditor.getCaretModel().getLogicalPosition().column) {
-    //  // we are in virtual space
-    //  final int caretLineNumber = myEditor.getCaretModel().getLogicalPosition().line;
-    //  if (caretLineNumber >= myDocument.getLineCount()) return;
-    //  offset = myDocument.getLineEndOffset(caretLineNumber) + myDocument.getLineSeparatorLength(caretLineNumber);
-    //}
-
     final int originalOffset = offset;
 
     EditorHighlighter highlighter = getEditorHighlighter();
@@ -265,10 +252,7 @@ public class BraceHighlightingHandler {
     if (iterator.atEnd()) {
       offset--;
     }
-    else if (BraceMatchingUtil.isRBraceToken(iterator, chars, fileType)) {
-      offset--;
-    }
-    else if (!BraceMatchingUtil.isLBraceToken(iterator, chars, fileType)) {
+    else if (!BraceMatchingUtil.isRBraceToken(iterator, chars, fileType) && !BraceMatchingUtil.isLBraceToken(iterator, chars, fileType)) {
       offset--;
 
       if (offset >= 0) {
@@ -278,7 +262,6 @@ public class BraceHighlightingHandler {
     }
 
     if (offset < 0) {
-      removeLineMarkers();
       return;
     }
 
@@ -301,17 +284,16 @@ public class BraceHighlightingHandler {
       boolean searchForward = c != '\n';
 
       // Try to find matched brace backwards.
-      if (offset >= originalOffset && (c == ' ' || c == '\t' || c == '\n')) {
+      if (offset >= originalOffset) {
         int backwardNonWsOffset = CharArrayUtil.shiftBackward(chars, offset - 1, "\t ");
-        if (backwardNonWsOffset >= 0) {
-          iterator = highlighter.createIterator(backwardNonWsOffset);
-          FileType newFileType = getFileTypeByIterator(iterator);
-          if (BraceMatchingUtil.isLBraceToken(iterator, chars, newFileType) ||
-              BraceMatchingUtil.isRBraceToken(iterator, chars, newFileType)) {
-            offset = backwardNonWsOffset;
-            searchForward = false;
-            doHighlight(backwardNonWsOffset, originalOffset, newFileType);
-          }
+        backwardNonWsOffset = backwardNonWsOffset >= 0 ? backwardNonWsOffset : offset - 1;
+        iterator = highlighter.createIterator(backwardNonWsOffset);
+        FileType newFileType = getFileTypeByIterator(iterator);
+        if (BraceMatchingUtil.isLBraceToken(iterator, chars, newFileType) ||
+            BraceMatchingUtil.isRBraceToken(iterator, chars, newFileType)) {
+          offset = backwardNonWsOffset;
+          searchForward = false;
+          doHighlight(offset, originalOffset, newFileType);
         }
       }
 
@@ -330,19 +312,9 @@ public class BraceHighlightingHandler {
       }
     }
 
-    //highlight scope
-    if (!myCodeInsightSettings.HIGHLIGHT_SCOPE) {
-      removeLineMarkers();
-      return;
+    if (myCodeInsightSettings.HIGHLIGHT_SCOPE) {
+      highlightScope(offset, fileType);
     }
-
-    final int _offset = offset;
-    final FileType _fileType = fileType;
-    myAlarm.addRequest(() -> {
-      if (!myProject.isDisposed() && !myEditor.isDisposed()) {
-        highlightScope(_offset, _fileType);
-      }
-    }, 300);
   }
 
   @NotNull
@@ -374,20 +346,12 @@ public class BraceHighlightingHandler {
     HighlighterIterator iterator = getEditorHighlighter().createIterator(offset);
     final CharSequence chars = myDocument.getCharsSequence();
 
-    if (!BraceMatchingUtil.isStructuralBraceToken(fileType, iterator, chars)) {
-//      if (BraceMatchingUtil.isRBraceTokenToHighlight(myFileType, iterator) || BraceMatchingUtil.isLBraceTokenToHighlight(myFileType, iterator)) return;
+    if (!(BraceMatchingUtil.isStructuralBraceToken(fileType, iterator, chars) &&
+          (BraceMatchingUtil.isRBraceToken(iterator, chars, fileType) ||
+           BraceMatchingUtil.isLBraceToken(iterator, chars, fileType))) &&
+        BraceMatchingUtil.findStructuralLeftBrace(fileType, iterator, chars)) {
+      highlightLeftBrace(iterator, true, fileType);
     }
-    else {
-      if (BraceMatchingUtil.isRBraceToken(iterator, chars, fileType) ||
-          BraceMatchingUtil.isLBraceToken(iterator, chars, fileType)) return;
-    }
-
-    if (!BraceMatchingUtil.findStructuralLeftBrace(fileType, iterator, chars)) {
-      removeLineMarkers();
-      return;
-    }
-
-    highlightLeftBrace(iterator, true, fileType);
   }
 
   private void doHighlight(int offset, int originalOffset, @NotNull FileType fileType) {
@@ -461,29 +425,11 @@ public class BraceHighlightingHandler {
       final int startLine = myEditor.offsetToLogicalPosition(lBrace.getStartOffset()).line;
       final int endLine = myEditor.offsetToLogicalPosition(rBrace.getEndOffset()).line;
       if (endLine - startLine > 0) {
-        final Runnable runnable = () -> {
-          if (myProject.isDisposed() || myEditor.isDisposed()) return;
-          lineMarkFragment(startLine, endLine, matched);
-        };
-
-        if (!scopeHighlighting) {
-          myAlarm.addRequest(runnable, 300);
-        }
-        else {
-          runnable.run();
-        }
-      }
-      else {
-        removeLineMarkers();
+        lineMarkFragment(startLine, endLine, matched);
       }
 
       if (!scopeHighlighting) {
         showScopeHint(lBrace.getStartOffset(), lBrace.getEndOffset());
-      }
-    }
-    else {
-      if (!myCodeInsightSettings.HIGHLIGHT_SCOPE) {
-        removeLineMarkers();
       }
     }
   }
@@ -497,7 +443,7 @@ public class BraceHighlightingHandler {
 
     RangeHighlighter rbraceHighlighter =
         myEditor.getMarkupModel().addRangeHighlighter(
-          braceRange.getStartOffset(), braceRange.getEndOffset(), HighlighterLayer.LAST + 1, attributes, HighlighterTargetArea.EXACT_RANGE);
+          braceRange.getStartOffset(), braceRange.getEndOffset(), LAYER, attributes, HighlighterTargetArea.EXACT_RANGE);
     rbraceHighlighter.setGreedyToLeft(false);
     rbraceHighlighter.setGreedyToRight(false);
     registerHighlighter(rbraceHighlighter);
@@ -573,15 +519,16 @@ public class BraceHighlightingHandler {
     LineMarkerRenderer renderer = createLineMarkerRenderer(matched);
     if (renderer == null) return;
 
-    RangeHighlighter highlighter = myEditor.getMarkupModel().addRangeHighlighter(startOffset, endOffset, 0, null, HighlighterTargetArea.LINES_IN_RANGE);
-    highlighter.setLineMarkerRenderer(renderer);
+    RangeHighlighter highlighter = myEditor.getMarkupModel()
+      .addRangeHighlighterAndChangeAttributes(startOffset, endOffset, 0, null, HighlighterTargetArea.LINES_IN_RANGE, false,
+                                              h -> h.setLineMarkerRenderer(renderer));
     myEditor.putUserData(LINE_MARKER_IN_EDITOR_KEY, highlighter);
   }
 
   private void removeLineMarkers() {
     ApplicationManager.getApplication().assertIsDispatchThread();
     RangeHighlighter marker = myEditor.getUserData(LINE_MARKER_IN_EDITOR_KEY);
-    if (marker != null && ((MarkupModelEx)myEditor.getMarkupModel()).containsHighlighter(marker)) {
+    if (marker != null && myEditor.getMarkupModel().containsHighlighter(marker)) {
       marker.dispose();
     }
     myEditor.putUserData(LINE_MARKER_IN_EDITOR_KEY, null);

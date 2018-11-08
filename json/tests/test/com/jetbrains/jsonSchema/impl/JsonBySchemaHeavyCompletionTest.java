@@ -93,6 +93,10 @@ public class JsonBySchemaHeavyCompletionTest extends JsonBySchemaHeavyCompletion
     baseInsertTest("insertPropertyName", "testNameWithDefaultStringValueComma");
   }
 
+  public void testWhitespaceAfterColon() throws Exception {
+    baseInsertTest("addWhitespaceAfterColon", "colon");
+  }
+
   public void testArrayLiteral() throws Exception {
     baseInsertTest("insertArrayOrObjectLiteral", "arrayLiteral");
     complete();
@@ -107,6 +111,20 @@ public class JsonBySchemaHeavyCompletionTest extends JsonBySchemaHeavyCompletion
 
   public void testOneOfWithNotFilledPropertyValue() throws Exception {
     baseCompletionTest("oneOfWithEnumValue", "oneOfWithEmptyPropertyValue", "\"business\"", "\"home\"");
+  }
+
+  public void testRequiredPropsFirst() throws Exception {
+    baseTestNoSchema("requiredProps", "requiredPropsFirst", () -> {
+      complete();
+      assertStringItems("a", "b");
+    });
+  }
+
+  public void testRequiredPropsLast() throws Exception {
+    baseTestNoSchema("requiredProps", "requiredPropsLast", () -> {
+      complete();
+      assertStringItems("b");
+    });
   }
 
   public void testEditingSchemaAffectsCompletion() throws Exception {
@@ -135,5 +153,11 @@ public class JsonBySchemaHeavyCompletionTest extends JsonBySchemaHeavyCompletion
     });
   }
 
+  public void testGuessType() throws Exception {
+    baseInsertTest("guessType", "test");
+  }
 
+  public void testDontGuessType() throws Exception {
+    baseInsertTest("dontGuessType", "test");
+  }
 }

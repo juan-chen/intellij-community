@@ -7,7 +7,6 @@ import com.intellij.json.JsonBundle;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.CommonShortcuts;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
-import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
@@ -31,6 +30,7 @@ import com.intellij.ui.awt.RelativePoint;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBTextField;
 import com.intellij.ui.table.TableView;
+import com.intellij.util.containers.ContainerUtil;
 import com.intellij.util.ui.*;
 import com.jetbrains.jsonSchema.JsonMappingKind;
 import com.jetbrains.jsonSchema.UserDefinedJsonSchemaConfiguration;
@@ -47,6 +47,7 @@ import javax.swing.table.TableCellRenderer;
 import java.awt.*;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -61,7 +62,7 @@ public class JsonSchemaMappingsView implements Disposable {
   private static final String EDIT_SCHEMA_MAPPING = "settings.json.schema.edit.mapping";
   private static final String REMOVE_SCHEMA_MAPPING = "settings.json.schema.remove.mapping";
   private final TreeUpdater myTreeUpdater;
-  private final Consumer<String> mySchemaPathChangedCallback;
+  private final Consumer<? super String> mySchemaPathChangedCallback;
   private TableView<UserDefinedJsonSchemaConfiguration.Item> myTableView;
   private JComponent myComponent;
   private Project myProject;
@@ -74,7 +75,7 @@ public class JsonSchemaMappingsView implements Disposable {
 
   public JsonSchemaMappingsView(Project project,
                                 TreeUpdater treeUpdater,
-                                Consumer<String> schemaPathChangedCallback) {
+                                Consumer<? super String> schemaPathChangedCallback) {
     myTreeUpdater = treeUpdater;
     mySchemaPathChangedCallback = schemaPathChangedCallback;
     createUI(project);
@@ -102,7 +103,7 @@ public class JsonSchemaMappingsView implements Disposable {
                                                      FileChooserDescriptorFactory.createSingleFileDescriptor());
     mySchemaField.getTextField().getDocument().addDocumentListener(new DocumentAdapter() {
       @Override
-      protected void textChanged(DocumentEvent e) {
+      protected void textChanged(@NotNull DocumentEvent e) {
         mySchemaPathChangedCallback.accept(mySchemaField.getText());
       }
     });
@@ -170,7 +171,9 @@ public class JsonSchemaMappingsView implements Disposable {
   }
 
   public List<UserDefinedJsonSchemaConfiguration.Item> getData() {
-    return myTableView.getListTableModel().getItems();
+    return Collections.unmodifiableList(
+      ContainerUtil
+        .filter(myTableView.getListTableModel().getItems(), i -> i.mappingKind == JsonMappingKind.Directory || !StringUtil.isEmpty(i.path)));
   }
 
   public void setItems(String schemaFilePath,
@@ -206,7 +209,7 @@ public class JsonSchemaMappingsView implements Disposable {
   }
 
   private class MappingItemColumnInfo extends ColumnInfo<UserDefinedJsonSchemaConfiguration.Item, String> {
-    public MappingItemColumnInfo() {super("");}
+    MappingItemColumnInfo() {super("");}
 
     @Nullable
     @Override
@@ -258,7 +261,7 @@ public class JsonSchemaMappingsView implements Disposable {
   }
 
   class MyAddActionButtonRunnable implements AnActionButtonRunnable {
-    public MyAddActionButtonRunnable() {
+    MyAddActionButtonRunnable() {
       super();
     }
 
@@ -301,7 +304,7 @@ public class JsonSchemaMappingsView implements Disposable {
   }
 
   private class MyEditActionButtonRunnableImpl implements AnActionButtonRunnable {
-    public MyEditActionButtonRunnableImpl() {
+    MyEditActionButtonRunnableImpl() {
       super();
     }
 

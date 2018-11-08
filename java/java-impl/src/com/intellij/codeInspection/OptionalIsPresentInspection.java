@@ -13,7 +13,6 @@ import com.intellij.psi.codeStyle.CodeStyleManager;
 import com.intellij.psi.codeStyle.JavaCodeStyleManager;
 import com.intellij.psi.codeStyle.SuggestedNameInfo;
 import com.intellij.psi.codeStyle.VariableKind;
-import com.intellij.psi.impl.PsiDiamondTypeUtil;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.psi.util.PsiTypesUtil;
 import com.intellij.psi.util.PsiUtil;
@@ -24,6 +23,8 @@ import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.Nls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.Objects;
 
 import static com.intellij.codeInsight.PsiEquivalenceUtil.areElementsEquivalent;
 
@@ -239,8 +240,9 @@ public class OptionalIsPresentInspection extends AbstractBaseJavaLocalInspection
     }
     String lambdaText = generateOptionalLambda(factory, ct, optionalRef, trueValue);
     PsiLambdaExpression lambda = (PsiLambdaExpression)factory.createExpressionFromText(lambdaText, trueValue);
+    PsiExpression body = Objects.requireNonNull((PsiExpression)lambda.getBody());
     return OptionalUtil.generateOptionalUnwrap(optionalRef.getText(), lambda.getParameterList().getParameters()[0],
-                                               (PsiExpression)lambda.getBody(), ct.markUnchanged(falseValue), targetType, true);
+                                               body, ct.markUnchanged(falseValue), targetType, true);
   }
 
   static boolean isSimpleOrUnchecked(PsiExpression expression) {
@@ -250,7 +252,7 @@ public class OptionalIsPresentInspection extends AbstractBaseJavaLocalInspection
   static class OptionalIsPresentFix implements LocalQuickFix {
     private final OptionalIsPresentCase myScenario;
 
-    public OptionalIsPresentFix(OptionalIsPresentCase scenario) {
+    OptionalIsPresentFix(OptionalIsPresentCase scenario) {
       myScenario = scenario;
     }
 
@@ -291,7 +293,7 @@ public class OptionalIsPresentInspection extends AbstractBaseJavaLocalInspection
       if (elseElement != null && !PsiTreeUtil.isAncestor(cond, elseElement, true)) ct.delete(elseElement);
       PsiElement result = ct.replaceAndRestoreComments(cond, replacementText);
       LambdaCanBeMethodReferenceInspection.replaceAllLambdasWithMethodReferences(result);
-      PsiDiamondTypeUtil.removeRedundantTypeArguments(result);
+      RemoveRedundantTypeArgumentsUtil.removeRedundantTypeArguments(result);
       CodeStyleManager.getInstance(project).reformat(result);
     }
   }

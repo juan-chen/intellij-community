@@ -62,8 +62,8 @@ public class ReplaceNullCheckInspection extends AbstractBaseJavaLocalInspectionT
         PsiStatement nextToDelete = context.myNextToDelete;
         int maybeImplicitElseLength = nextToDelete != null ? nextToDelete.getTextLength() : 0;
         boolean isInfoLevel = noWarningReplacementBigger && ifStatement.getTextLength() + maybeImplicitElseLength - context.getLenAfterReplace() < MINIMAL_WARN_DELTA_SIZE;
-        if (!isOnTheFly && isInfoLevel) return;
         ProblemHighlightType highlight = getHighlight(context, isInfoLevel);
+        if (!isOnTheFly && highlight == ProblemHighlightType.INFORMATION) return;
         holder.registerProblem(ifStatement.getFirstChild(), InspectionsBundle.message("inspection.require.non.null.message", method), highlight,
                                new ReplaceWithRequireNonNullFix(method, false));
       }
@@ -293,10 +293,10 @@ public class ReplaceNullCheckInspection extends AbstractBaseJavaLocalInspectionT
 
     @Nullable
     static TernaryNotNullContext from(@NotNull PsiConditionalExpression ternary) {
-      PsiBinaryExpression binOp = tryCast(ternary.getCondition(), PsiBinaryExpression.class);
+      PsiBinaryExpression binOp = tryCast(PsiUtil.skipParenthesizedExprDown(ternary.getCondition()), PsiBinaryExpression.class);
       if(binOp == null) return null;
       PsiExpression value = ExpressionUtils.getValueComparedWithNull(binOp);
-      PsiReferenceExpression referenceExpression = tryCast(value, PsiReferenceExpression.class);
+      PsiReferenceExpression referenceExpression = tryCast(PsiUtil.skipParenthesizedExprDown(value), PsiReferenceExpression.class);
       if(referenceExpression == null) return null;
       PsiVariable variable = tryCast(referenceExpression.resolve(), PsiVariable.class);
       if(variable == null) return null;

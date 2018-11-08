@@ -108,7 +108,8 @@ public class RedundantComparatorComparingInspection extends AbstractBaseJavaLoca
     }
     if (REVERSE_ORDER_FOR_COMPARATOR.test(call)) {
       PsiExpression arg = call.getArgumentList().getExpressions()[0];
-      if (call.getType() != null && call.getType().equals(arg.getType())) {
+      PsiType type = call.getType();
+      if (type != null && type.equals(arg.getType())) {
         return ct.text(arg);
       }
     }
@@ -126,7 +127,7 @@ public class RedundantComparatorComparingInspection extends AbstractBaseJavaLoca
     private final String mySourceMethod;
     private final String myTargetMethod;
 
-    public DeleteComparingCallFix(String sourceMethod, String targetMethod) {
+    DeleteComparingCallFix(String sourceMethod, String targetMethod) {
       mySourceMethod = sourceMethod;
       myTargetMethod = targetMethod;
     }
@@ -162,7 +163,7 @@ public class RedundantComparatorComparingInspection extends AbstractBaseJavaLoca
   private static class ReplaceMaxMinFix implements LocalQuickFix {
     private final String myReplacement;
 
-    public ReplaceMaxMinFix(String replacement) {
+    ReplaceMaxMinFix(String replacement) {
       myReplacement = replacement;
     }
 

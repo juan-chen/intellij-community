@@ -6,7 +6,10 @@ import com.intellij.ide.gdpr.ConsentOptions;
 import com.intellij.internal.statistic.configurable.SendPeriod;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ex.ApplicationManagerEx;
-import com.intellij.openapi.components.*;
+import com.intellij.openapi.components.PersistentStateComponent;
+import com.intellij.openapi.components.RoamingType;
+import com.intellij.openapi.components.State;
+import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.util.text.StringUtil;
 import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
@@ -17,15 +20,13 @@ import org.jetbrains.annotations.Nullable;
   name = "UsagesStatistic",
   storages = @Storage(value = UsageStatisticsPersistenceComponent.USAGE_STATISTICS_XML, roamingType = RoamingType.DISABLED)
 )
-public class UsageStatisticsPersistenceComponent extends BasicSentUsagesPersistenceComponent
-  implements NamedComponent, PersistentStateComponent<Element> {
+public class UsageStatisticsPersistenceComponent extends BasicSentUsagesPersistenceComponent implements PersistentStateComponent<Element> {
   public static final String USAGE_STATISTICS_XML = "usage.statistics.xml";
 
   @NonNls private boolean isShowNotification = true;
   @NotNull private SendPeriod myPeriod = SendPeriod.DAILY;
 
   @NonNls private static final String LAST_TIME_ATTR = "time";
-  @NonNls private static final String EVENT_LOG_LAST_TIME_ATTR = "event-log-time";
   @NonNls private static final String IS_ALLOWED_ATTR = "allowed";
   @NonNls private static final String SHOW_NOTIFICATION_ATTR = "show-notification";
 
@@ -48,13 +49,6 @@ public class UsageStatisticsPersistenceComponent extends BasicSentUsagesPersiste
       setSentTime(0);
     }
 
-    try {
-      setEventLogSentTime(Long.parseLong(element.getAttributeValue(EVENT_LOG_LAST_TIME_ATTR, "0")));
-    }
-    catch (NumberFormatException e) {
-      setEventLogSentTime(0);
-    }
-
     // compatibility: if was previously allowed, transfer the setting to the new place
     final String isAllowedValue = element.getAttributeValue(IS_ALLOWED_ATTR);
     if (!StringUtil.isEmptyOrSpaces(isAllowedValue) && Boolean.parseBoolean(isAllowedValue)) {
@@ -74,10 +68,6 @@ public class UsageStatisticsPersistenceComponent extends BasicSentUsagesPersiste
       element.setAttribute(LAST_TIME_ATTR, String.valueOf(lastTimeSent));
     }
 
-    long lastEventLogTimeSent = getEventLogLastTimeSent();
-    if (lastEventLogTimeSent > 0) {
-      element.setAttribute(EVENT_LOG_LAST_TIME_ATTR, String.valueOf(lastEventLogTimeSent));
-    }
     if (!isShowNotification()) {
       element.setAttribute(SHOW_NOTIFICATION_ATTR, "false");
     }
@@ -117,12 +107,5 @@ public class UsageStatisticsPersistenceComponent extends BasicSentUsagesPersiste
   @Override
   public boolean isShowNotification() {
     return isShowNotification;
-  }
-
-  @Override
-  @NonNls
-  @NotNull
-  public String getComponentName() {
-    return "SentUsagesPersistenceComponent";
   }
 }

@@ -43,6 +43,7 @@ import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.TestOnly;
 import org.jetbrains.idea.svn.actions.CleanupWorker;
 import org.jetbrains.idea.svn.actions.SvnMergeProvider;
 import org.jetbrains.idea.svn.annotate.SvnAnnotationProvider;
@@ -81,7 +82,6 @@ import static com.intellij.util.containers.ContainerUtil.*;
 import static java.util.Collections.emptyList;
 import static java.util.function.Function.identity;
 
-@SuppressWarnings({"IOResourceOpenedButNotSafelyClosed"})
 public class SvnVcs extends AbstractVcs<CommittedChangeList> {
   private static final String DO_NOT_LISTEN_TO_WC_DB = "svn.do.not.listen.to.wc.db";
   private static final Logger REFRESH_LOG = Logger.getInstance("#svn_refresh");
@@ -225,6 +225,11 @@ public class SvnVcs extends AbstractVcs<CommittedChangeList> {
     if (myCopiesRefreshManager != null) {
       myCopiesRefreshManager.asynchRequest();
     }
+  }
+
+  @TestOnly
+  SvnCopiesRefreshManager getCopiesRefreshManager() {
+    return myCopiesRefreshManager;
   }
 
   private void upgradeIfNeeded(final MessageBus bus) {

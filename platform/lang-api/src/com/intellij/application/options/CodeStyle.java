@@ -199,7 +199,6 @@ public class CodeStyle {
    */
   @TestOnly
   public static void setTemporarySettings(@NotNull Project project, @NotNull CodeStyleSettings settings) {
-    //noinspection deprecation
     CodeStyleSettingsManager.getInstance(project).setTemporarySettings(settings);
   }
 
@@ -215,10 +214,11 @@ public class CodeStyle {
    * @see #setTemporarySettings(Project, CodeStyleSettings)
    */
   @TestOnly
-  public static void dropTemporarySettings(@NotNull Project project) {
-    if (project.isDefault()) {
+  public static void dropTemporarySettings(@Nullable Project project) {
+    if (project == null || project.isDefault()) {
       return;
     }
+
     ProjectCodeStyleSettingsManager manager = ServiceManager.getServiceIfCreated(project, ProjectCodeStyleSettingsManager.class);
     if (manager != null) {
       manager.dropTemporarySettings();
@@ -237,12 +237,18 @@ public class CodeStyle {
   public static void doWithTemporarySettings(@NotNull Project project,
                                              @NotNull CodeStyleSettings tempSettings,
                                              @NotNull Runnable runnable) {
+    CodeStyleSettings tempSettingsBefore = CodeStyleSettingsManager.getInstance(project).getTemporarySettings();
     try {
       setTemporarySettings(project, tempSettings);
       runnable.run();
     }
     finally {
-      dropTemporarySettings(project);
+      if (tempSettingsBefore != null) {
+        setTemporarySettings(project, tempSettingsBefore);
+      }
+      else {
+        dropTemporarySettings(project);
+      }
     }
   }
 
@@ -252,7 +258,6 @@ public class CodeStyle {
    *         are used.
    */
   public static boolean usesOwnSettings(@NotNull Project project) {
-    //noinspection deprecation
     return CodeStyleSettingsManager.getInstance(project).USE_PER_PROJECT_SETTINGS;
   }
 
@@ -283,7 +288,6 @@ public class CodeStyle {
    * @param settings  The settings to use with the project.
    */
   public static void setMainProjectSettings(@NotNull Project project, @NotNull CodeStyleSettings settings) {
-    @SuppressWarnings("deprecation")
     CodeStyleSettingsManager codeStyleSettingsManager = CodeStyleSettingsManager.getInstance(project);
     codeStyleSettingsManager.setMainProjectCodeStyle(settings);
     codeStyleSettingsManager.USE_PER_PROJECT_SETTINGS = true;
@@ -308,5 +312,16 @@ public class CodeStyle {
     }
     codeStyleBean.setRootSettings(getSettings(project));
     return codeStyleBean;
+  }
+
+  /**
+   * Checks if the file can be formatted according to code style settings. If formatting is disabled, all related operations including
+   * optimize imports and rearrange code should be blocked (cause no changes).
+   *
+   * @param file The PSI file to check.
+   * @return True if the file is formattable, false otherwise.
+   */
+  public static boolean isFormattingEnabled(@NotNull PsiFile file) {
+    return !getSettings(file).getExcludedFiles().contains(file);
   }
 }

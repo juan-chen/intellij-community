@@ -12,9 +12,8 @@ import java.util.List;
 
 class GroovyAllVariantsProcessor extends GroovyResolverProcessor {
 
-  GroovyAllVariantsProcessor(@NotNull GrReferenceExpression ref,
-                             @NotNull EnumSet<GroovyResolveKind> kinds) {
-    super(ref, kinds, false);
+  GroovyAllVariantsProcessor(@NotNull GrReferenceExpression ref, @NotNull EnumSet<GroovyResolveKind> kinds) {
+    super(ref, kinds);
   }
 
   @NotNull
@@ -23,7 +22,6 @@ class GroovyAllVariantsProcessor extends GroovyResolverProcessor {
     final List<GroovyResolveResult> results = ContainerUtil.newArrayList();
     results.addAll(myCandidates.values());
     myAccessorProcessors.forEach(it -> results.addAll(it.getResults()));
-    results.addAll(myInapplicableCandidates.values());
     return ContainerUtil.newArrayList(ResolveUtil.filterSameSignatureCandidates(results));
   }
 }

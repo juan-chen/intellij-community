@@ -33,7 +33,7 @@ class JsonSchemaInfoPopupStep extends BaseListPopupStep<JsonSchemaInfo> {
   @NotNull private final JsonSchemaService myService;
   private static final Icon EMPTY_ICON = JBUI.scale(EmptyIcon.create(AllIcons.General.Add.getIconWidth()));
 
-  public JsonSchemaInfoPopupStep(@NotNull List<JsonSchemaInfo> allSchemas, @NotNull Project project, @NotNull VirtualFile virtualFile,
+  JsonSchemaInfoPopupStep(@NotNull List<JsonSchemaInfo> allSchemas, @NotNull Project project, @NotNull VirtualFile virtualFile,
                                  @NotNull JsonSchemaService service) {
     super(null, allSchemas);
     myProject = project;
@@ -130,7 +130,7 @@ class JsonSchemaInfoPopupStep extends BaseListPopupStep<JsonSchemaInfo> {
     if (mappingForFile != null) {
       for (UserDefinedJsonSchemaConfiguration.Item pattern : mappingForFile.patterns) {
         if (Objects.equals(VfsUtil.findRelativeFile(projectBaseDir, pattern.getPathParts()), virtualFile)
-              || virtualFile.getUrl().equals(pattern.path)) {
+              || virtualFile.getUrl().equals(pattern.getPath())) {
           mappingForFile.patterns.remove(pattern);
           if (mappingForFile.patterns.size() == 0 && mappingForFile.isApplicationDefined()) {
             configuration.removeConfiguration(mappingForFile);

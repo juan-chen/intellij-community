@@ -69,6 +69,7 @@ public class PyQuickDocTest extends LightMarkedTestCase {
   private void checkHTMLOnly() {
     final Map<String, PsiElement> marks = loadTest();
     final PsiElement originalElement = marks.get("<the_ref>");
+    assertNotNull("<the_ref> marker is missing in test data", originalElement);
     final DocumentationManager manager = DocumentationManager.getInstance(myFixture.getProject());
     final PsiElement target = manager.findTargetElement(myFixture.getEditor(),
                                                         originalElement.getTextOffset(),
@@ -551,11 +552,50 @@ public class PyQuickDocTest extends LightMarkedTestCase {
     checkByHTML(myProvider.generateDoc(init, init));
   }
 
+  public void testSingleLetterInheritedDocstring() {
+    checkHTMLOnly();
+  }
+
   // PY-30432
   public void testNoExternalDocumentationSection() {
     doMultiFileCheckByHTML("numpy.py");
   }
 
+  // PY-31025
+  public void testGoogleDocstringWithReturnValueDescriptionWithoutType() {
+    checkHTMLOnly();
+  }
+
+  // PY-31148
+  public void testSphinxDocstringWithCombinedParamTypeAndDescription() {
+    checkHTMLOnly();
+  }
+
+  // PY-31033
+  public void testDefaultValues() {
+    checkHTMLOnly();
+  }
+
+  // PY-31074
+  public void testClassDocumentationTakenFromConstructor() {
+    checkHTMLOnly();
+  }
+
+  // PY-31862
+  public void testEscapedSummaryOfFunctionDocstringInQuickNavigationInfo() {
+    checkHover();    
+  }
+
+  // PY-31862
+  public void testEscapedSummaryOfClassDocstringInQuickNavigationInfo() {
+    checkHover();
+  }
+
+  // PY-31862
+  public void testEscapedSummaryOfConstructorDocstringInQuickNavigationInfo() {
+    checkHover();
+  }
+  
   @Override
   protected String getTestDataPath() {
     return super.getTestDataPath() + "/quickdoc/";

@@ -43,7 +43,6 @@ import com.intellij.reference.SoftReference;
 import com.intellij.remote.*;
 import com.intellij.remote.ext.CredentialsCase;
 import com.intellij.remote.ext.LanguageCaseCollector;
-import com.intellij.util.ArrayUtil;
 import com.intellij.util.Consumer;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.ObjectUtils;
@@ -67,6 +66,7 @@ import com.jetbrains.python.sdk.flavors.CPythonSdkFlavor;
 import com.jetbrains.python.sdk.flavors.PythonSdkFlavor;
 import com.jetbrains.python.sdk.pipenv.PyPipEnvSdkAdditionalData;
 import icons.PythonIcons;
+import one.util.streamex.StreamEx;
 import org.jdom.Element;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -75,10 +75,11 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.awt.*;
 import java.io.File;
-import java.io.IOException;
 import java.lang.ref.WeakReference;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -147,59 +148,13 @@ public final class PythonSdkType extends SdkType {
   @NonNls
   @Nullable
   public String suggestHomePath() {
-    final String pythonFromPath = findPythonInPath();
-    if (pythonFromPath != null) {
-      return pythonFromPath;
-    }
-    for (PythonSdkFlavor flavor : PythonSdkFlavor.getApplicableFlavors()) {
-      TreeSet<String> candidates = createVersionSet();
-      candidates.addAll(flavor.suggestHomePaths());
-      if (!candidates.isEmpty()) {
-        // return latest version
-        String[] candidateArray = ArrayUtil.toStringArray(candidates);
-        return candidateArray[candidateArray.length - 1];
-      }
+    final Sdk[] existingSdks = ProjectJdkTable.getInstance().getAllJdks();
+    final List<PyDetectedSdk> sdks = PySdkExtKt.detectSystemWideSdks(null, Arrays.asList(existingSdks));
+    final PyDetectedSdk latest = StreamEx.of(sdks).findFirst().orElse(null);
+    if (latest != null) {
+      return latest.getHomePath();
     }
     return null;
-  }
-
-  @Nullable
-  private static String findPythonInPath() {
-    final String defaultCommand = SystemInfo.isWindows ? "python.exe" : "python";
-    final String path = System.getenv("PATH");
-    for (String root : path.split(File.pathSeparator)) {
-      final File file = new File(root, defaultCommand);
-      if (file.exists()) {
-        try {
-          return file.getCanonicalPath();
-        }
-        catch (IOException ignored) {
-        }
-      }
-    }
-    return null;
-  }
-
-  @NotNull
-  @Override
-  public Collection<String> suggestHomePaths() {
-    List<String> candidates = new ArrayList<>();
-    for (PythonSdkFlavor flavor : PythonSdkFlavor.getApplicableFlavors()) {
-      candidates.addAll(flavor.suggestHomePaths());
-    }
-    return candidates;
-  }
-
-  private static TreeSet<String> createVersionSet() {
-    return new TreeSet<>(Comparator.comparing(PythonSdkType::findDigits));
-  }
-
-  private static String findDigits(String s) {
-    int pos = StringUtil.findFirst(s, Character::isDigit);
-    if (pos >= 0) {
-      return s.substring(pos);
-    }
-    return s;
   }
 
   public static boolean hasValidSdk() {
@@ -408,11 +363,11 @@ public final class PythonSdkType extends SdkType {
       Map<String, String> env = commandLine.getEnvironment();
       String pathValue;
       if (env.containsKey(PATH)) {
-        pathValue = PythonEnvUtil.appendToPathEnvVar(env.get(PATH), virtualenvBin);
+        pathValue = PythonEnvUtil.addToPathEnvVar(env.get(PATH), virtualenvBin, true);
       }
       else if (passParentEnvironment) {
         // append to PATH
-        pathValue = PythonEnvUtil.appendToPathEnvVar(System.getenv(PATH), virtualenvBin);
+        pathValue = PythonEnvUtil.addToPathEnvVar(System.getenv(PATH), virtualenvBin, true);
       }
       else {
         pathValue = virtualenvBin;
@@ -421,6 +376,7 @@ public final class PythonSdkType extends SdkType {
     }
   }
 
+  @NotNull
   @Override
   public String suggestSdkName(final String currentSdkName, final String sdkHome) {
     final String name = StringUtil.notNullize(suggestBaseSdkName(sdkHome), "Unknown");
@@ -539,7 +495,6 @@ public final class PythonSdkType extends SdkType {
       notificationMessage = e.getMessage() + "\n<a href=\"#\">Launch vagrant and refresh skeletons</a>";
     }
     else if (ExceptionUtil.causedBy(e, ExceptionFix.class)) {
-      //noinspection ThrowableResultOfMethodCallIgnored
       final ExceptionFix fix = ExceptionUtil.findCause(e, ExceptionFix.class);
       notificationListener =
         (notification, event) -> {
@@ -707,7 +662,7 @@ public final class PythonSdkType extends SdkType {
   }
 
   @Nullable
-  public static Sdk findSdkByPath(List<Sdk> sdkList, @Nullable String path) {
+  public static Sdk findSdkByPath(List<? extends Sdk> sdkList, @Nullable String path) {
     if (path != null) {
       for (Sdk sdk : sdkList) {
         if (sdk != null && FileUtil.pathsEqual(path, sdk.getHomePath())) {
@@ -808,7 +763,7 @@ public final class PythonSdkType extends SdkType {
   }
 
   @Nullable
-  public static Sdk findPython2Sdk(@NotNull List<Sdk> sdks) {
+  public static Sdk findPython2Sdk(@NotNull List<? extends Sdk> sdks) {
     for (Sdk sdk : ContainerUtil.sorted(sdks, PreferredSdkComparator.INSTANCE)) {
       if (getLanguageLevelForSdk(sdk).isPython2()) {
         return sdk;

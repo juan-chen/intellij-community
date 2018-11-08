@@ -157,7 +157,7 @@ public class JavaSpacePropertyProcessor extends JavaElementVisitor {
   private void init(ASTNode child) {
     if (child == null) return;
     ASTNode treePrev = child.getTreePrev();
-    while (treePrev != null && isWhiteSpace(treePrev)) {
+    while (treePrev != null && (treePrev.getElementType() == TokenType.WHITE_SPACE || treePrev.getTextLength() == 0)) {
       treePrev = treePrev.getTreePrev();
     }
     if (treePrev == null) {
@@ -173,10 +173,6 @@ public class JavaSpacePropertyProcessor extends JavaElementVisitor {
       myRole2 = parent.getChildRole(child);
       myType2 = child.getElementType();
     }
-  }
-
-  private static boolean isWhiteSpace(ASTNode treePrev) {
-    return treePrev != null && (treePrev.getElementType() == TokenType.WHITE_SPACE || treePrev.getTextLength() == 0);
   }
 
   @Override
@@ -227,7 +223,7 @@ public class JavaSpacePropertyProcessor extends JavaElementVisitor {
     }
     else if (myRole1 == ChildRole.LBRACE || isEndOfLineCommentAfterLBrace(myChild1)) {
       if (aClass.isEnum()) {
-        createParenthSpace(true, false);
+        createSpacingForEnumBraces();
       }
       else if (myRole2 == ChildRole.RBRACE && mySettings.KEEP_SIMPLE_CLASSES_IN_ONE_LINE) {
         int spaces = mySettings.SPACE_WITHIN_BRACES ? 1 : 0;
@@ -249,8 +245,7 @@ public class JavaSpacePropertyProcessor extends JavaElementVisitor {
       }
     }
     else if (myRole2 == ChildRole.RBRACE && aClass.isEnum()) {
-      myResult = Spacing.createDependentLFSpacing(0, 0, myParent.getTextRange(), mySettings.KEEP_LINE_BREAKS,
-                                                  mySettings.KEEP_BLANK_LINES_IN_DECLARATIONS);
+      createSpacingForEnumBraces();
     }
     else if (myRole1 == ChildRole.COMMA && aClass.isEnum() && isJavadocHoldingEnumConstant(myChild2)) {
       createParenthSpace(true, true);
@@ -277,6 +272,18 @@ public class JavaSpacePropertyProcessor extends JavaElementVisitor {
     else {
       processClassBody();
     }
+  }
+
+  private void createSpacingForEnumBraces() {
+    // Ignore comments in front of enum for dependent spacing
+    PsiElement first = myParent.getFirstChild();
+    while (first instanceof PsiDocComment) {
+      first = first.getNextSibling();
+    }
+    int spaces = myJavaSettings.SPACE_INSIDE_ONE_LINE_ENUM_BRACES ? 1 : 0;
+    TextRange textRange = new TextRange(first.getTextOffset(), myParent.getTextRange().getEndOffset());
+    myResult = Spacing.createDependentLFSpacing(spaces, spaces, textRange, mySettings.KEEP_LINE_BREAKS,
+                                                mySettings.KEEP_BLANK_LINES_IN_DECLARATIONS);
   }
 
   private static boolean isJavadocHoldingEnumConstant(@NotNull ASTNode node) {
@@ -680,7 +687,11 @@ public class JavaSpacePropertyProcessor extends JavaElementVisitor {
 
     else if (myType2 == JavaElementType.PACKAGE_STATEMENT) {
       int lf = mySettings.BLANK_LINES_BEFORE_PACKAGE + 1;
-      myResult = Spacing.createSpacing(0, 0, lf, mySettings.KEEP_LINE_BREAKS, mySettings.KEEP_BLANK_LINES_IN_DECLARATIONS);
+      // special case when header before package
+      int keepLines = myType1 == JavaTokenType.C_STYLE_COMMENT
+                      ? mySettings.KEEP_BLANK_LINES_BETWEEN_PACKAGE_DECLARATION_AND_HEADER
+                      : mySettings.KEEP_BLANK_LINES_IN_DECLARATIONS;
+      myResult = Spacing.createSpacing(0, 0, lf, mySettings.KEEP_LINE_BREAKS,keepLines);
     }
 
     else if (myType1 == JavaElementType.IMPORT_LIST) {
@@ -1293,7 +1304,17 @@ public class JavaSpacePropertyProcessor extends JavaElementVisitor {
 
   @Override
   public void visitSwitchLabelStatement(PsiSwitchLabelStatement statement) {
-    if (myRole1 == ChildRole.CASE_KEYWORD || myRole2 == ChildRole.CASE_EXPRESSION) {
+    if (myType1 == JavaTokenType.CASE_KEYWORD) {
+      createSpaceProperty(true, false, 0);
+    }
+    else if (myType2 == JavaTokenType.COLON) {
+      createSpaceProperty(false, false, 0);
+    }
+  }
+
+  @Override
+  public void visitSwitchLabeledRuleStatement(PsiSwitchLabeledRuleStatement statement) {
+    if (myType1 == JavaTokenType.CASE_KEYWORD || myType1 == JavaTokenType.ARROW || myType2 == JavaTokenType.ARROW) {
       createSpaceProperty(true, false, 0);
     }
   }
@@ -1432,9 +1453,8 @@ public class JavaSpacePropertyProcessor extends JavaElementVisitor {
 
   @Nullable
   private static ASTNode findFrom(ASTNode current, IElementType expected, boolean forward) {
-    while (current != null) {
-      if (current.getElementType() == expected) return current;
-      current = forward ? current.getTreeNext() : current.getTreePrev();
+    for (ASTNode node = current; node != null; node = forward ? node.getTreeNext() : node.getTreePrev()) {
+      if (node.getElementType() == expected) return node;
     }
     return null;
   }

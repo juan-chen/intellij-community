@@ -33,6 +33,7 @@ import com.intellij.psi.*;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NonNls;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
@@ -71,7 +72,7 @@ public abstract class CreateConstructorFromThisOrSuperFix extends CreateFromUsag
   protected void invokeImpl(PsiClass targetClass) {
     final PsiFile callSite = myMethodCall.getContainingFile();
     final Project project = myMethodCall.getProject();
-    PsiElementFactory elementFactory = JavaPsiFacade.getInstance(project).getElementFactory();
+    PsiElementFactory elementFactory = JavaPsiFacade.getElementFactory(project);
 
     IdeDocumentHistory.getInstance(project).includeCurrentPlaceAsChangePlace();
 
@@ -105,7 +106,7 @@ public abstract class CreateConstructorFromThisOrSuperFix extends CreateFromUsag
 
       startTemplate(editor, template, project, new TemplateEditingAdapter() {
         @Override
-        public void templateFinished(Template template, boolean brokenOff) {
+        public void templateFinished(@NotNull Template template, boolean brokenOff) {
           ApplicationManager.getApplication().runWriteAction(() -> {
             try {
               PsiDocumentManager.getInstance(project).commitDocument(editor.getDocument());

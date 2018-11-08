@@ -218,18 +218,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
 
   @Nullable
   public static JavaResolveResult resolveJavaReference(@NotNull PsiReference reference) {
-    if (reference instanceof PsiJavaReference) {
-      PsiJavaReference psiJavaReference = (PsiJavaReference)reference;
-      return psiJavaReference.advancedResolve(false);
-    }
-    if (reference instanceof PsiPolyVariantReference &&
-        reference instanceof ResolvingHint && ((ResolvingHint)reference).canResolveTo(PsiClass.class)) {
-      ResolveResult[] resolve = ((PsiPolyVariantReference)reference).multiResolve(false);
-      if (resolve.length == 1 && resolve[0] instanceof JavaResolveResult) {
-        return (JavaResolveResult)resolve[0];
-      }
-    }
-    return null;
+    return reference instanceof PsiJavaReference ? ((PsiJavaReference)reference).advancedResolve(false) : null;
   }
 
   @Override
@@ -714,9 +703,8 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
         String description = null;
         if (element instanceof PsiClass) {
           final Pair<PsiImportStaticReferenceElement, PsiClass> imported = mySingleImportedClasses.get(refName);
-          final PsiClass aClass = imported == null ? null : imported.getSecond();
+          final PsiClass aClass = Pair.getSecond(imported);
           if (aClass != null && !manager.areElementsEquivalent(aClass, element)) {
-            //noinspection ConditionalExpressionWithIdenticalBranches
             description = imported.first == null
                           ? JavaErrorMessages.message("single.import.class.conflict", refName)
                           : imported.first.equals(ref)
@@ -727,9 +715,8 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
         }
         else if (element instanceof PsiField) {
           final Pair<PsiImportStaticReferenceElement, PsiField> imported = mySingleImportedFields.get(refName);
-          final PsiField field = imported == null ? null : imported.getSecond();
+          final PsiField field = Pair.getSecond(imported);
           if (field != null && !manager.areElementsEquivalent(field, element)) {
-            //noinspection ConditionalExpressionWithIdenticalBranches
             description = imported.first.equals(ref)
                           ? JavaErrorMessages.message("field.is.ambiguous.in.single.static.import", refName)
                           : JavaErrorMessages.message("field.is.already.defined.in.single.static.import", refName);
@@ -1598,10 +1585,17 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
   }
 
   @Override
+  public void visitSwitchLabeledRuleStatement(PsiSwitchLabeledRuleStatement statement) {
+    super.visitSwitchLabeledRuleStatement(statement);
+    if (!myHolder.hasErrorResults()) myHolder.add(HighlightUtil.checkCaseStatement(statement));
+  }
+
+  @Override
   public void visitSwitchStatement(PsiSwitchStatement statement) {
     super.visitSwitchStatement(statement);
-    myHolder.add(HighlightUtil.checkStatementPrependedWithCaseInsideSwitch(statement));
+    if (!myHolder.hasErrorResults()) myHolder.add(HighlightUtil.checkSwitchBlockStatements(statement, myLanguageLevel, myFile));
     if (!myHolder.hasErrorResults()) myHolder.add(HighlightUtil.checkSwitchSelectorType(statement, myLanguageLevel));
+    if (!myHolder.hasErrorResults()) myHolder.addAll(HighlightUtil.checkSwitchLabelValues(statement));
   }
 
   @Override
@@ -1763,9 +1757,7 @@ public class HighlightVisitorImpl extends JavaElementVisitor implements Highligh
   public void visitRequiresStatement(PsiRequiresStatement statement) {
     super.visitRequiresStatement(statement);
     if (myLanguageLevel.isAtLeast(LanguageLevel.JDK_1_9)) {
-      PsiJavaModule container = (PsiJavaModule)statement.getParent();
-      PsiJavaModuleReferenceElement ref = statement.getReferenceElement();
-      if (!myHolder.hasErrorResults()) myHolder.add(ModuleHighlightUtil.checkModuleReference(ref, container));
+      if (!myHolder.hasErrorResults()) myHolder.add(ModuleHighlightUtil.checkModuleReference(statement));
       if (!myHolder.hasErrorResults() && myLanguageLevel.isAtLeast(LanguageLevel.JDK_10)) {
         myHolder.addAll(ModuleHighlightUtil.checkModifiers(statement));
       }

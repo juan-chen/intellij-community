@@ -2,6 +2,9 @@
 package com.intellij.codeInspection.dataFlow;
 
 import com.intellij.codeInsight.AnnotationUtil;
+import com.intellij.codeInsight.DefaultInferredAnnotationProvider;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
 import com.intellij.psi.util.CachedValueProvider;
 import com.intellij.psi.util.CachedValuesManager;
@@ -9,6 +12,7 @@ import com.intellij.psi.util.PsiModificationTracker;
 import com.intellij.util.ObjectUtils;
 import com.siyeh.ig.psiutils.ExpressionUtils;
 import com.siyeh.ig.psiutils.MethodCallUtils;
+import one.util.streamex.StreamEx;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -75,6 +79,24 @@ public class JavaMethodContractUtil {
    */
   public static boolean hasExplicitContractAnnotation(@NotNull PsiMethod method) {
     return getContractInfo(method).isExplicit();
+  }
+
+  /**
+   * Creates a new {@link PsiAnnotation} describing the updated contract. Only contract clauses are updated;
+   * purity and mutation signature (if exist) are left as is.
+   *
+   * @param annotation original annotation to update
+   * @param contracts new contracts
+   * @return new {@link PsiAnnotation} object which describes updated contracts or null if no annotation is required to represent
+   * the target contracts (i.e. contracts is empty, method has no mutation signature and is not marked as pure).
+   */
+  @Nullable
+  public static PsiAnnotation updateContract(PsiAnnotation annotation, List<StandardMethodContract> contracts) {
+    boolean pure = Boolean.TRUE.equals(AnnotationUtil.getBooleanAttributeValue(annotation, "pure"));
+    String mutates = StringUtil.notNullize(AnnotationUtil.getStringAttributeValue(annotation, MutationSignature.ATTR_MUTATES));
+    String resultValue = StreamEx.of(contracts).joining("; ");
+    Project project = annotation.getProject();
+    return DefaultInferredAnnotationProvider.createContractAnnotation(project, pure, resultValue, mutates);
   }
 
   static class ContractInfo {

@@ -86,6 +86,7 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
     return true;
   }
 
+  @NotNull
   protected abstract String getViewName();
 
   protected Map<BuildInfo, BuildView> getBuildsMap() {
@@ -93,7 +94,7 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
   }
 
   @Override
-  public void onEvent(BuildEvent event) {
+  public void onEvent(@NotNull BuildEvent event) {
     if (isDisposed.get()) return;
 
     MultipleBuildsView buildsView;
@@ -156,6 +157,8 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
   }
 
   void onBuildsViewRemove(@NotNull MultipleBuildsView buildsView) {
+    if (isDisposed.get()) return;
+
     if (myBuildsViewValue.getValue() == buildsView) {
       myBuildsViewValue.drop();
     }
@@ -173,7 +176,7 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
     boolean activateToolWindowWhenAdded;
     boolean activateToolWindowWhenFailed = true;
 
-    public BuildInfo(@NotNull Object id,
+    BuildInfo(@NotNull Object id,
                      @NotNull String title,
                      @NotNull String workingDir,
                      long startTime) {
@@ -230,12 +233,12 @@ public abstract class AbstractViewManager implements ViewManager, BuildProgressL
   private static class PinBuildViewAction extends DumbAwareAction implements Toggleable {
     private final Content myContent;
 
-    public PinBuildViewAction(MultipleBuildsView buildsView) {
+    PinBuildViewAction(MultipleBuildsView buildsView) {
       myContent = buildsView.getContent();
     }
 
     @Override
-    public void actionPerformed(AnActionEvent e) {
+    public void actionPerformed(@NotNull AnActionEvent e) {
       boolean selected = !myContent.isPinned();
       if (selected) {
         myContent.putUserData(ToolWindow.SHOW_CONTENT_ICON, Boolean.TRUE);

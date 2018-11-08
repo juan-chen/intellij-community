@@ -18,6 +18,8 @@ import com.intellij.openapi.vfs.impl.http.HttpVirtualFile;
 import com.intellij.openapi.vfs.impl.http.RemoteFileInfo;
 import com.intellij.openapi.wm.StatusBarWidget;
 import com.intellij.openapi.wm.impl.status.EditorBasedStatusBarPopup;
+import com.intellij.util.containers.ContainerUtil;
+import com.jetbrains.jsonSchema.JsonSchemaCatalogProjectConfiguration;
 import com.jetbrains.jsonSchema.extension.*;
 import com.jetbrains.jsonSchema.ide.JsonSchemaService;
 import com.jetbrains.jsonSchema.impl.JsonSchemaConflictNotificationProvider;
@@ -28,7 +30,6 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.stream.Collectors;
 
 class JsonSchemaStatusWidget extends EditorBasedStatusBarPopup {
   private static final String JSON_SCHEMA_BAR = "JSON: ";
@@ -38,7 +39,7 @@ class JsonSchemaStatusWidget extends EditorBasedStatusBarPopup {
   private final JsonSchemaService myService;
   private static final String ID = "JSONSchemaSelector";
 
-  public JsonSchemaStatusWidget(Project project) {
+  JsonSchemaStatusWidget(Project project) {
     super(project);
     myService = JsonSchemaService.Impl.get(project);
     myService.registerRemoteUpdateCallback(myUpdateCallback);
@@ -49,7 +50,7 @@ class JsonSchemaStatusWidget extends EditorBasedStatusBarPopup {
 
   private static class MyWidgetState extends WidgetState {
     boolean warning = false;
-    public MyWidgetState(String toolTip, String text, boolean actionEnabled) {
+    MyWidgetState(String toolTip, String text, boolean actionEnabled) {
       super(toolTip, text, actionEnabled);
     }
 
@@ -98,10 +99,10 @@ class JsonSchemaStatusWidget extends EditorBasedStatusBarPopup {
     }
 
     if (schemaFiles.size() != 1) {
-      List<VirtualFile> onlyUserSchemas = schemaFiles.stream().filter(s -> {
+      List<VirtualFile> onlyUserSchemas = ContainerUtil.filter(schemaFiles, s -> {
         JsonSchemaFileProvider provider = myService.getSchemaProvider(s);
         return provider != null && provider.getSchemaType() == SchemaType.userSchema;
-      }).collect(Collectors.toList());
+      });
       if (onlyUserSchemas.size() > 1) {
         MyWidgetState state = new MyWidgetState(JsonSchemaConflictNotificationProvider.createMessage(schemaFiles, myService,
                                                                                                      "<br/>", "Conflicting schemas:<br/>",
@@ -119,6 +120,9 @@ class JsonSchemaStatusWidget extends EditorBasedStatusBarPopup {
     VirtualFile schemaFile = schemaFiles.iterator().next();
     schemaFile = ((JsonSchemaServiceImpl)myService).replaceHttpFileWithBuiltinIfNeeded(schemaFile);
 
+    String tooltip = isJsonFile ? JSON_SCHEMA_TOOLTIP : JSON_SCHEMA_TOOLTIP_OTHER_FILES;
+    String bar = isJsonFile ? JSON_SCHEMA_BAR : JSON_SCHEMA_BAR_OTHER_FILES;
+
     if (schemaFile instanceof HttpVirtualFile) {
       RemoteFileInfo info = ((HttpVirtualFile)schemaFile).getFileInfo();
       if (info == null) return getDownloadErrorState(null);
@@ -126,23 +130,11 @@ class JsonSchemaStatusWidget extends EditorBasedStatusBarPopup {
       //noinspection EnumSwitchStatementWhichMissesCases
       switch (info.getState()) {
         case DOWNLOADING_NOT_STARTED:
+          addDownloadingUpdateListener(info);
+          return new MyWidgetState(tooltip + getSchemaFileDesc(schemaFile), bar + getPresentableNameForFile(schemaFile),
+                                   true);
         case DOWNLOADING_IN_PROGRESS:
-          info.addDownloadingListener(new FileDownloadingAdapter() {
-            @Override
-            public void fileDownloaded(VirtualFile localFile) {
-              update();
-            }
-
-            @Override
-            public void errorOccurred(@NotNull String errorMessage) {
-              update();
-            }
-
-            @Override
-            public void downloadingCancelled() {
-              update();
-            }
-          });
+          addDownloadingUpdateListener(info);
           return new MyWidgetState("Download is scheduled or in progress", "Downloading JSON schema", false);
         case ERROR_OCCURRED:
           return getDownloadErrorState(info.getErrorMessage());
@@ -155,15 +147,17 @@ class JsonSchemaStatusWidget extends EditorBasedStatusBarPopup {
       return state;
     }
 
-    String tooltip = isJsonFile ? JSON_SCHEMA_TOOLTIP : JSON_SCHEMA_TOOLTIP_OTHER_FILES;
-    String bar = isJsonFile ? JSON_SCHEMA_BAR : JSON_SCHEMA_BAR_OTHER_FILES;
-
     JsonSchemaFileProvider provider = myService.getSchemaProvider(schemaFile);
     if (provider != null) {
-      String providerName = provider.getPresentableName();
+      final boolean preferRemoteSchemas = JsonSchemaCatalogProjectConfiguration.getInstance(myProject).isPreferRemoteSchemas();
+      final String remoteSource = provider.getRemoteSource();
+      String providerName = preferRemoteSchemas && remoteSource != null && !remoteSource.endsWith("!") ? remoteSource : provider.getPresentableName();
       String shortName = StringUtil.trimEnd(StringUtil.trimEnd(providerName, ".json"), "-schema");
-      String name = shortName.startsWith("JSON schema") ? shortName : (bar + shortName);
-      String kind = provider.getSchemaType() == SchemaType.embeddedSchema || provider.getSchemaType() == SchemaType.schema ? " (bundled)" : "";
+      String name = preferRemoteSchemas && remoteSource != null && !remoteSource.endsWith("!") ? bar + new JsonSchemaInfo(remoteSource).getDescription()
+          : (shortName.startsWith("JSON schema") ? shortName : (bar + shortName));
+      String kind = !preferRemoteSchemas && (provider.getSchemaType() == SchemaType.embeddedSchema || provider.getSchemaType() == SchemaType.schema)
+                    ? " (bundled)"
+                    : "";
       return new MyWidgetState(tooltip + providerName + kind, name, true);
     }
 
@@ -171,10 +165,27 @@ class JsonSchemaStatusWidget extends EditorBasedStatusBarPopup {
                              true);
   }
 
-  private boolean isValidSchemaFile(VirtualFile schemaFile) {
-    if (schemaFile == null || !myService.isApplicableToFile(schemaFile) || !myService.isSchemaFile(schemaFile)) return false;
-    FileType type = schemaFile.getFileType();
-    return type instanceof LanguageFileType && ((LanguageFileType)type).getLanguage() instanceof JsonLanguage;
+  private void addDownloadingUpdateListener(@NotNull RemoteFileInfo info) {
+    info.addDownloadingListener(new FileDownloadingAdapter() {
+      @Override
+      public void fileDownloaded(@NotNull VirtualFile localFile) {
+        update();
+      }
+
+      @Override
+      public void errorOccurred(@NotNull String errorMessage) {
+        update();
+      }
+
+      @Override
+      public void downloadingCancelled() {
+        update();
+      }
+    });
+  }
+
+  private boolean isValidSchemaFile(@Nullable VirtualFile schemaFile) {
+    return schemaFile != null && myService.isSchemaFile(schemaFile) && myService.isApplicableToFile(schemaFile);
   }
 
   @Nullable

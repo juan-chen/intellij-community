@@ -44,7 +44,6 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
- * @since 4/15/13 2:29 PM
  */
 public class GradleProjectImportBuilder extends AbstractExternalProjectImportBuilder<ImportFromGradleControl> {
   /**
@@ -56,7 +55,7 @@ public class GradleProjectImportBuilder extends AbstractExternalProjectImportBui
   }
 
   public GradleProjectImportBuilder(@NotNull ProjectDataManager dataManager) {
-    super(dataManager, new ImportFromGradleControl(), GradleConstants.SYSTEM_ID);
+    super(dataManager, () -> new ImportFromGradleControl(), GradleConstants.SYSTEM_ID);
   }
 
   @NotNull

@@ -17,6 +17,7 @@ import com.jetbrains.python.psi.impl.PyCallExpressionHelper
 import com.jetbrains.python.psi.impl.PyEvaluator
 import com.jetbrains.python.psi.impl.stubs.PyDataclassFieldStubImpl
 import com.jetbrains.python.psi.resolve.PyResolveContext
+import com.jetbrains.python.psi.stubs.PyDataclassFieldStub
 import com.jetbrains.python.psi.types.*
 
 class PyDataclassInspection : PyInspection() {
@@ -24,12 +25,12 @@ class PyDataclassInspection : PyInspection() {
   companion object {
     private val ORDER_OPERATORS = setOf("__lt__", "__le__", "__gt__", "__ge__")
     private val DATACLASSES_HELPERS = setOf("dataclasses.fields", "dataclasses.asdict", "dataclasses.astuple", "dataclasses.replace")
-    private val ATTRS_HELPERS = setOf("attr.__init__.fields",
-                                      "attr.__init__.fields_dict",
-                                      "attr.__init__.asdict",
-                                      "attr.__init__.astuple",
-                                      "attr.__init__.assoc",
-                                      "attr.__init__.evolve")
+    private val ATTRS_HELPERS = setOf("attr.fields",
+                                      "attr.fields_dict",
+                                      "attr.asdict",
+                                      "attr.astuple",
+                                      "attr.assoc",
+                                      "attr.evolve")
   }
 
   override fun buildVisitor(holder: ProblemsHolder,
@@ -95,14 +96,23 @@ class PyDataclassInspection : PyInspection() {
 
             processAttrsDefaultThroughDecorator(node)
             processAttrsInitializersAndValidators(node)
-            processAttrsAutoAttribs(node, dataclassParameters)
             processAttrIbFunctionCalls(node)
           }
+
+          processAnnotationsExistence(node, dataclassParameters)
 
           PyNamedTupleInspection.inspectFieldsOrder(
             node,
             this::registerProblem,
-            { !PyTypingTypeProvider.isClassVar(it, myTypeEvalContext) },
+            {
+              val stub = it.stub
+              val fieldStub = if (stub == null) PyDataclassFieldStubImpl.create(it)
+              else stub.getCustomStub(PyDataclassFieldStub::class.java)
+
+              (fieldStub == null || fieldStub.initValue()) &&
+              !(fieldStub == null && it.annotationValue == null) && // skip fields that are not annotated
+              !PyTypingTypeProvider.isClassVar(it, myTypeEvalContext) // skip classvars
+            },
             {
               val fieldStub = PyDataclassFieldStubImpl.create(it)
 
@@ -424,8 +434,9 @@ class PyDataclassInspection : PyInspection() {
       )
     }
 
-    private fun processAttrsAutoAttribs(cls: PyClass, dataclassParameters: PyDataclassParameters) {
-      if (PyEvaluator.evaluateAsBoolean(PyUtil.peelArgument(dataclassParameters.others["auto_attribs"]), false)) {
+    private fun processAnnotationsExistence(cls: PyClass, dataclassParameters: PyDataclassParameters) {
+      if (dataclassParameters.type == PyDataclassParameters.Type.STD ||
+          PyEvaluator.evaluateAsBoolean(PyUtil.peelArgument(dataclassParameters.others["auto_attribs"]), false)) {
         cls.processClassLevelDeclarations { element, _ ->
           if (element is PyTargetExpression && element.annotation == null && PyDataclassFieldStubImpl.create(element) != null) {
             registerProblem(element, "Attribute '${element.name}' lacks a type annotation", ProblemHighlightType.GENERIC_ERROR)
@@ -504,7 +515,8 @@ class PyDataclassInspection : PyInspection() {
                         ProblemHighlightType.LIKE_UNUSED_SYMBOL)
       }
 
-      val parameters = ContainerUtil.subList(postInit.getParameters(myTypeEvalContext), 1)
+      val implicitParameters = postInit.getParameters(myTypeEvalContext)
+      val parameters = if (implicitParameters.isEmpty()) emptyList<PyCallableParameter>() else ContainerUtil.subList(implicitParameters, 1)
       val message = "'$DUNDER_POST_INIT' should take all init-only variables in the same order as they are defined"
 
       if (parameters.size != initVars.size) {
@@ -548,11 +560,10 @@ class PyDataclassInspection : PyInspection() {
     private fun processHelperAttrsArgument(argument: PyExpression?, calleeQName: String) {
       if (argument == null) return
 
-      val instance = calleeQName != "attr.__init__.fields" && calleeQName != "attr.__init__.fields_dict"
+      val instance = calleeQName != "attr.fields" && calleeQName != "attr.fields_dict"
 
       if (isNotExpectedDataclass(myTypeEvalContext.getType(argument), PyDataclassParameters.Type.ATTRS, !instance, instance)) {
-        val presentableCalleeQName = calleeQName.replaceFirst(".__init__.", ".")
-        val message = "'$presentableCalleeQName' method should be called on attrs " + if (instance) "instances" else "types"
+        val message = "'$calleeQName' method should be called on attrs " + if (instance) "instances" else "types"
 
         registerProblem(argument, message)
       }

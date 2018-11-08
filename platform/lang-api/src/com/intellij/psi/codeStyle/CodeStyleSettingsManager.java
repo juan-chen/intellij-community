@@ -26,12 +26,12 @@ import com.intellij.openapi.util.DifferenceFilter;
 import com.intellij.openapi.util.InvalidDataException;
 import com.intellij.openapi.util.WriteExternalException;
 import com.intellij.psi.PsiFile;
+import com.intellij.util.containers.ContainerUtil;
 import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Field;
-import java.util.ArrayList;
 import java.util.List;
 
 public class CodeStyleSettingsManager implements PersistentStateComponent<Element> {
@@ -48,14 +48,11 @@ public class CodeStyleSettingsManager implements PersistentStateComponent<Elemen
   public volatile String PREFERRED_PROJECT_CODE_STYLE;
   private volatile CodeStyleSettings myTemporarySettings;
 
-  private List<CodeStyleSettingsListener> myListeners = new ArrayList<>();
+  private final List<CodeStyleSettingsListener> myListeners = ContainerUtil.createLockFreeCopyOnWriteList();
 
-  /**
-   * @deprecated see comments for {@link #getSettings(Project)}
-   */
-  @Deprecated
   public static CodeStyleSettingsManager getInstance(@Nullable Project project) {
-    if (project == null || project.isDefault()) return getInstance();
+    if (project == null || project.isDefault()) //noinspection deprecation
+      return getInstance();
     ProjectCodeStyleSettingsManager projectSettingsManager = ServiceManager.getService(project, ProjectCodeStyleSettingsManager.class);
     projectSettingsManager.initProjectSettings(project);
     return projectSettingsManager;
@@ -88,6 +85,10 @@ public class CodeStyleSettingsManager implements PersistentStateComponent<Elemen
     return getInstance(project).getCurrentSettings();
   }
 
+  /**
+   * @deprecated see comments for {@link #getSettings(Project)}
+   */
+  @Deprecated
   @NotNull
   public CodeStyleSettings getCurrentSettings() {
     CodeStyleSettings temporarySettings = myTemporarySettings;
@@ -164,12 +165,32 @@ public class CodeStyleSettingsManager implements PersistentStateComponent<Elemen
     myTemporarySettings = null;
   }
 
+  @Nullable
+  public CodeStyleSettings getTemporarySettings() {
+    return myTemporarySettings;
+  }
+
   public void addListener(@NotNull CodeStyleSettingsListener listener) {
     myListeners.add(listener);
   }
 
-  public void removeListener(@NotNull CodeStyleSettingsListener listener) {
+  private void removeListener(@NotNull CodeStyleSettingsListener listener) {
     myListeners.remove(listener);
+  }
+
+  public static void removeListener(@Nullable Project project, @NotNull CodeStyleSettingsListener listener) {
+    if (project == null || project.isDefault()) {
+      //noinspection deprecation
+      getInstance().removeListener(listener);
+    }
+    else {
+      if (!project.isDisposed()) {
+        CodeStyleSettingsManager projectInstance = ServiceManager.getService(project, ProjectCodeStyleSettingsManager.class);
+        if (projectInstance != null) {
+          projectInstance.removeListener(listener);
+        }
+      }
+    }
   }
 
   public void fireCodeStyleSettingsChanged(@Nullable PsiFile file) {

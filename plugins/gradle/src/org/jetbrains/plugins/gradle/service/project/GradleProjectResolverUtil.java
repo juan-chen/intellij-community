@@ -59,7 +59,6 @@ import static org.jetbrains.plugins.gradle.service.project.GradleProjectResolver
 
 /**
  * @author Vladislav.Soroka
- * @since 10/6/2015
  */
 public class GradleProjectResolverUtil {
   private static final Logger LOG = Logger.getInstance(GradleProjectResolverUtil.class);
@@ -528,7 +527,7 @@ public class GradleProjectResolverUtil {
           @Nullable ExternalSourceSet mySourceSet;
           Collection<File> dependencyArtifacts;
 
-          public ProjectDependencyInfo(@NotNull ModuleData moduleData,
+          ProjectDependencyInfo(@NotNull ModuleData moduleData,
                                        @Nullable ExternalSourceSet sourceSet,
                                        Collection<File> dependencyArtifacts) {
             this.myModuleData = moduleData;
